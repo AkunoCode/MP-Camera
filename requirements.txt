@@ -1,0 +1,8 @@
+PyQt5>=5.15.0
+inference-sdk
+
+# Optional: pin versions if you prefer
+# PyQt5==5.15.9
+# inference-sdk==<version>
+opencv-python>=4.5.0
+python-dotenv>=0.21.0
