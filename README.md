@@ -54,9 +54,9 @@ python main.py
 
 ## Configuration notes
 
-- `api_url` defaults to `https://serverless.roboflow.com` (editable in the UI).
-- `api_key` may be provided in the UI or via `ROBOFLOW_API_KEY` env var / `.env` file.
-- `workspace_name` and `workflow_id` are editable in the UI; change them to point to your workflow.
+- `api_url` defaults to `https://serverless.roboflow.com`.
+- `api_key` may be provided via the Settings dialog or via `ROBOFLOW_API_KEY` env var / `.env` file.
+- `workspace_name` and `workflow_id` are now editable in the Settings dialog (open the app and click the "Settings" button).
 
 ## Dependencies and optional features
 

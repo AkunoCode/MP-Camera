@@ -74,6 +74,8 @@ class VideoWorker(QThread):
     result_ready = pyqtSignal(object)
     error = pyqtSignal(str)
     stats_ready = pyqtSignal(float, float)
+    # Emit numpy BGR frames for live preview in the UI
+    frame_ready = pyqtSignal(object)
 
     def __init__(
         self, api_url, api_key, workspace, workflow_id, video_source=0, max_fps=10
@@ -125,16 +127,13 @@ class VideoWorker(QThread):
                 self.error.emit(f"InferencePipeline error: {e}")
             return
 
-        # Fallback path
+        # Fallback path: use OpenCV to capture frames and optionally send per-frame
         if cv2 is None:
             self.error.emit("Neither InferencePipeline nor OpenCV are available.")
             return
 
-        if InferenceHTTPClient is None:
-            self.error.emit(
-                "inference_sdk is not installed, required for fallback per-frame inference."
-            )
-            return
+        # It's OK if InferenceHTTPClient is missing; in that case we will still
+        # emit frames for preview but won't attempt per-frame uploads.
 
         try:
             client = InferenceHTTPClient(api_url=self.api_url, api_key=self.api_key)
@@ -160,6 +159,12 @@ class VideoWorker(QThread):
                     time.sleep(0.005)
                     continue
 
+                # Emit the captured frame for UI preview (send a copy to be safe)
+                try:
+                    self.frame_ready.emit(frame.copy())
+                except Exception:
+                    pass
+
                 max_width = 640
                 h, w = frame.shape[:2]
                 if w > max_width:
@@ -178,17 +183,22 @@ class VideoWorker(QThread):
 
                     send_t0 = time.time()
                     try:
-                        result = client.run_workflow(
-                            workspace_name=self.workspace,
-                            workflow_id=self.workflow_id,
-                            images={"image": tmp_path},
-                            use_cache=False,
-                        )
-                        send_latency = time.time() - send_t0
-                        measured_fps = 1.0 / max(send_latency, 1e-6)
-                        last_sent_time = time.time()
-                        self.stats_ready.emit(send_latency, measured_fps)
-                        self.result_ready.emit(result)
+                        # Only attempt upload if the HTTP client is available and an api_key is provided
+                        if InferenceHTTPClient is not None and self.api_key:
+                            result = client.run_workflow(
+                                workspace_name=self.workspace,
+                                workflow_id=self.workflow_id,
+                                images={"image": tmp_path},
+                                use_cache=False,
+                            )
+                            send_latency = time.time() - send_t0
+                            measured_fps = 1.0 / max(send_latency, 1e-6)
+                            last_sent_time = time.time()
+                            self.stats_ready.emit(send_latency, measured_fps)
+                            self.result_ready.emit(result)
+                        else:
+                            # Not uploading; just update last_sent_time so preview isn't rate-limited
+                            last_sent_time = time.time()
                     except Exception as e:
                         self.error.emit(str(e))
                 finally:
