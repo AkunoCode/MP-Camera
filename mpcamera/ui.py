@@ -16,6 +16,8 @@ from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEnginePage
 import cv2
 import os
 import logging
+import tempfile
+import numpy as _np
 
 from mpcamera.directus.directus import DirectusClient
 from mpcamera.helpers import persist_env_var, parse_prediction_to_rows
@@ -348,6 +350,36 @@ class MainWindow(BaseClass):
         # Separate tracking for single-image inference (reuses same worker class)
         self._image_inference_thread = None
         self._image_inference_worker = None
+        # Last prediction and last displayed image (QImage) for saving
+        self._last_prediction = None
+        self._last_inference_qimage = None
+
+        # Wire save button and state updates
+        try:
+            save_btn = getattr(self, "saveInferenceButton", None)
+            if save_btn is not None:
+                save_btn.clicked.connect(self._save_inference_to_directus)
+                # initially disabled until conditions met
+                try:
+                    save_btn.setEnabled(False)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # connect sample and magnification changes to update save button state
+        try:
+            sample_cb = getattr(self, "sampleComboBox", None)
+            if sample_cb is not None:
+                sample_cb.currentIndexChanged.connect(self._update_save_button_state)
+        except Exception:
+            pass
+        try:
+            mag_le = getattr(self, "maginficationLineEdit", None)
+            if mag_le is not None:
+                mag_le.textChanged.connect(self._update_save_button_state)
+        except Exception:
+            pass
 
     # Camera control methods
     def start_camera(self, index=0):
@@ -1174,6 +1206,15 @@ class MainWindow(BaseClass):
 
             if label is None or qimg is None:
                 return
+            # store last displayed image for potential cropping/upload
+            try:
+                # keep a copy to avoid buffer lifetime issues
+                self._last_inference_qimage = qimg.copy()
+            except Exception:
+                try:
+                    self._last_inference_qimage = QImage(qimg)
+                except Exception:
+                    self._last_inference_qimage = None
             pix = QPixmap.fromImage(qimg)
             try:
                 target_w = label.width() or 658
@@ -1202,6 +1243,12 @@ class MainWindow(BaseClass):
             )
             if table is None:
                 return
+
+            # store last raw prediction for saving later
+            try:
+                self._last_prediction = result
+            except Exception:
+                self._last_prediction = None
 
             # Clear existing rows
             try:
@@ -1237,5 +1284,424 @@ class MainWindow(BaseClass):
                     table.setItem(row, 2, conf_item)
                 except Exception:
                     continue
+            # update save button state now that new results exist
+            try:
+                self._update_save_button_state()
+            except Exception:
+                pass
         except Exception:
             pass
+
+    def _update_save_button_state(self, *args):
+        """Enable save button only when sample selected, magnification provided, and results exist."""
+        try:
+            save_btn = getattr(self, "saveInferenceButton", None)
+            if save_btn is None:
+                return
+
+            # sample selected?
+            sample_cb = getattr(self, "sampleComboBox", None)
+            sample_ok = False
+            try:
+                if sample_cb is not None:
+                    data = sample_cb.currentData()
+                    sample_ok = data not in (None, "", 0)
+            except Exception:
+                sample_ok = False
+
+            # magnification provided?
+            mag_le = getattr(self, "maginficationLineEdit", None)
+            mag_ok = False
+            try:
+                if mag_le is not None:
+                    mag_ok = bool(str(mag_le.text()).strip())
+            except Exception:
+                mag_ok = False
+
+            # results exist?
+            results_ok = False
+            try:
+                if self._last_prediction is not None:
+                    # raw prediction exists
+                    results_ok = True
+                else:
+                    tbl = getattr(self, "inferenceTable", None)
+                    if tbl is not None and tbl.rowCount() > 0:
+                        results_ok = True
+            except Exception:
+                results_ok = False
+
+            save_btn.setEnabled(bool(sample_ok and mag_ok and results_ok))
+        except Exception:
+            pass
+
+    def _save_inference_to_directus(self):
+        """Save current inference detections to Directus `microplastics` collection.
+
+        This will attempt to crop each detection (using polygons if present or
+        falling back to bounding boxes), upload the cropped image via
+        DirectusClient.upload_file, and create a microplastic item per
+        detection using `create_microplastic`.
+        """
+        try:
+            save_btn = getattr(self, "saveInferenceButton", None)
+            if save_btn is None:
+                return
+
+            # basic guards (sample, magnification, prediction/image)
+            sample_cb = getattr(self, "sampleComboBox", None)
+            if sample_cb is None:
+                return
+            sample_id = sample_cb.currentData()
+            if sample_id in (None, "", 0):
+                return
+
+            mag_le = getattr(self, "maginficationLineEdit", None)
+            mag_val = None
+            if mag_le is not None:
+                mag_val = str(mag_le.text()).strip()
+            if not mag_val:
+                return
+
+            result = getattr(self, "_last_prediction", None)
+            if result is None:
+                return
+
+            # Obtain source image (uploaded path has priority)
+            src_img = None
+            img_path = getattr(self, "_uploaded_image_path", None)
+            if img_path and os.path.exists(img_path):
+                try:
+                    src_img = cv2.imread(img_path)
+                except Exception:
+                    src_img = None
+
+            # fallback: use last displayed QImage
+            if (
+                src_img is None
+                and getattr(self, "_last_inference_qimage", None) is not None
+            ):
+                try:
+                    q = self._last_inference_qimage
+                    q = q.convertToFormat(QImage.Format_RGB888)
+                    w = q.width()
+                    h = q.height()
+                    ptr = q.bits()
+                    ptr.setsize(q.byteCount())
+                    arr = _np.frombuffer(ptr, _np.uint8).reshape((h, w, 3))
+                    # QImage is RGB888, convert to BGR for opencv
+                    src_img = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+                except Exception:
+                    src_img = None
+
+            if src_img is None:
+                print("No source image available for saving inference")
+                return
+
+            # Normalize predictions list
+            preds = None
+            if isinstance(result, dict):
+                preds = result.get("predictions") or []
+            else:
+                preds = getattr(result, "predictions", []) or []
+
+            if not preds:
+                print("No detections found in prediction result")
+                return
+
+            client = None
+            try:
+                client = DirectusClient()
+            except Exception as e:
+                print("Directus client init failed:", e)
+                return
+
+            successes = 0
+            # iterate detections
+            for idx, pred in enumerate(preds):
+                try:
+                    # try polygon from result.polygons (worker may have attached)
+                    poly = None
+                    try:
+                        polygons = None
+                        if isinstance(result, dict):
+                            polygons = result.get("polygons")
+                        else:
+                            polygons = getattr(result, "polygons", None)
+                        if polygons and len(polygons) > idx:
+                            # polygons[idx] may be list of item_polys; pick first polygon
+                            item_polys = polygons[idx]
+                            if item_polys and len(item_polys) > 0:
+                                poly = item_polys[0]
+                    except Exception:
+                        poly = None
+
+                    # fallback: try bounding box keys
+                    bbox = None
+                    try:
+                        if isinstance(pred, dict):
+                            # common patterns
+                            if (
+                                "x_min" in pred
+                                and "y_min" in pred
+                                and "x_max" in pred
+                                and "y_max" in pred
+                            ):
+                                bbox = (
+                                    int(pred["x_min"]),
+                                    int(pred["y_min"]),
+                                    int(pred["x_max"]),
+                                    int(pred["y_max"]),
+                                )
+                            elif (
+                                "x" in pred
+                                and "y" in pred
+                                and "width" in pred
+                                and "height" in pred
+                            ):
+                                x = int(pred.get("x", 0))
+                                y = int(pred.get("y", 0))
+                                w = int(pred.get("width", 0))
+                                h = int(pred.get("height", 0))
+                                bbox = (x, y, x + w, y + h)
+                            elif (
+                                "bbox" in pred
+                                and isinstance(pred.get("bbox"), (list, tuple))
+                                and len(pred.get("bbox")) >= 4
+                            ):
+                                b = pred.get("bbox")
+                                bbox = (int(b[0]), int(b[1]), int(b[2]), int(b[3]))
+                    except Exception:
+                        bbox = None
+
+                    # Use polygon to compute bounding box if available
+                    if poly and not bbox:
+                        xs = [p[0] for p in poly]
+                        ys = [p[1] for p in poly]
+                        if xs and ys:
+                            x0 = max(0, min(xs))
+                            y0 = max(0, min(ys))
+                            x1 = min(src_img.shape[1] - 1, max(xs))
+                            y1 = min(src_img.shape[0] - 1, max(ys))
+                            bbox = (x0, y0, x1, y1)
+
+                    if not bbox:
+                        # nothing to crop, skip
+                        continue
+
+                    x0, y0, x1, y1 = bbox
+                    # ensure within image bounds
+                    x0 = max(0, min(int(x0), src_img.shape[1] - 1))
+                    x1 = max(0, min(int(x1), src_img.shape[1] - 1))
+                    y0 = max(0, min(int(y0), src_img.shape[0] - 1))
+                    y1 = max(0, min(int(y1), src_img.shape[0] - 1))
+                    if x1 <= x0 or y1 <= y0:
+                        continue
+
+                    crop = src_img[y0:y1, x0:x1]
+                    if crop is None or crop.size == 0:
+                        continue
+
+                    # optionally compute a crude color label (mean BGR -> hex)
+                    try:
+                        mean_bgr = _np.mean(_np.reshape(crop, (-1, 3)), axis=0)
+                        # convert to hex RGB
+                        r, g, b = int(mean_bgr[2]), int(mean_bgr[1]), int(mean_bgr[0])
+                        color_hex = f"#{r:02x}{g:02x}{b:02x}"
+                    except Exception:
+                        color_hex = ""
+
+                    # get shape/class and confidence using multiple fallbacks
+                    shape = ""
+                    conf = None
+                    try:
+                        # 1) Try common keys directly on the prediction dict/object
+                        def _try_keys(obj, keys):
+                            for k in keys:
+                                try:
+                                    if isinstance(obj, dict):
+                                        if k in obj and obj.get(k) not in (None, ""):
+                                            return obj.get(k)
+                                    else:
+                                        v = getattr(obj, k, None)
+                                        if v not in (None, ""):
+                                            return v
+                                except Exception:
+                                    continue
+                            return None
+
+                        class_keys = [
+                            "class",
+                            "class_name",
+                            "label",
+                            "name",
+                            "pred_class",
+                            "prediction",
+                        ]
+                        conf_keys = [
+                            "confidence",
+                            "score",
+                            "probability",
+                            "conf",
+                            "confidence_level",
+                            "confidence_score",
+                        ]
+
+                        val = _try_keys(pred, class_keys)
+                        if val is not None:
+                            shape = str(val)
+
+                        cval = _try_keys(pred, conf_keys)
+                        if cval is not None:
+                            try:
+                                conf = float(cval)
+                            except Exception:
+                                try:
+                                    conf = float(str(cval))
+                                except Exception:
+                                    conf = None
+
+                        # 2) If still missing, try structured `result['data']` arrays
+                        if (not shape or shape == "") or conf is None:
+                            try:
+                                data = None
+                                if isinstance(result, dict):
+                                    data = result.get("data")
+                                else:
+                                    data = getattr(result, "data", None)
+                                if isinstance(data, dict):
+                                    # class names array
+                                    for key in ("class_name", "class", "label", "name"):
+                                        if key in data:
+                                            try:
+                                                arr = data.get(key)
+                                                # attempt index access
+                                                if hasattr(arr, "__len__"):
+                                                    try:
+                                                        cand = arr[idx]
+                                                        if cand not in (None, ""):
+                                                            shape = str(cand)
+                                                            break
+                                                    except Exception:
+                                                        # maybe arr is scalar
+                                                        if arr not in (None, ""):
+                                                            shape = str(arr)
+                                                            break
+                                            except Exception:
+                                                continue
+                                    # confidences array
+                                    for key in (
+                                        "confidence",
+                                        "conf",
+                                        "score",
+                                        "probability",
+                                    ):
+                                        if key in data and conf is None:
+                                            try:
+                                                arr = data.get(key)
+                                                if hasattr(arr, "__len__"):
+                                                    try:
+                                                        cand = float(arr[idx])
+                                                        conf = cand
+                                                        break
+                                                    except Exception:
+                                                        continue
+                                            except Exception:
+                                                continue
+                            except Exception:
+                                pass
+
+                        # 3) final fallback: use parse_prediction_to_rows if available
+                        if (not shape or shape == "") or conf is None:
+                            try:
+                                rows_map = parse_prediction_to_rows(result)
+                                if rows_map and len(rows_map) > idx:
+                                    _, cls_name, conf_str = rows_map[idx]
+                                    if (not shape or shape == "") and cls_name:
+                                        shape = str(cls_name)
+                                    if conf is None and conf_str:
+                                        try:
+                                            conf = float(conf_str)
+                                        except Exception:
+                                            conf = None
+                            except Exception:
+                                pass
+                    except Exception:
+                        shape = ""
+                        conf = None
+
+                    # write crop to temp file
+                    tf = None
+                    try:
+                        fd, tmp_path = tempfile.mkstemp(suffix=".png")
+                        os.close(fd)
+                        # OpenCV expects BGR; crop is already BGR
+                        cv2.imwrite(tmp_path, crop)
+                        tf = tmp_path
+                    except Exception:
+                        tf = None
+
+                    if tf is None:
+                        continue
+
+                    # upload file to Directus
+                    try:
+                        resp = client.upload_file(tf)
+                        # try to extract file id
+                        file_id = None
+                        if isinstance(resp, dict):
+                            if "data" in resp and isinstance(resp.get("data"), dict):
+                                file_id = resp.get("data").get("id")
+                            else:
+                                # some Directus installs return the created file record directly
+                                file_id = resp.get("id") or resp.get("data")
+                        else:
+                            file_id = None
+                    except Exception as e:
+                        print("File upload failed:", e)
+                        file_id = None
+
+                    # build item payload
+                    item = {
+                        "sample_source": sample_id,
+                        "shape": str(shape) if shape is not None else "",
+                        "color": color_hex,
+                        "confidence_level": float(conf) if conf is not None else None,
+                        "magnification": mag_val,
+                    }
+                    if file_id is not None:
+                        item["image"] = file_id
+
+                    # create microplastic record
+                    try:
+                        create_resp = client.create_microplastic(item)
+                        successes += 1
+                        print("Saved microplastic:", create_resp)
+                    except Exception as e:
+                        print("Failed to create microplastic item:", e)
+
+                    # remove temp file
+                    try:
+                        if tf and os.path.exists(tf):
+                            os.remove(tf)
+                    except Exception:
+                        pass
+
+                except Exception as e:
+                    print("Error saving detection:", e)
+                    continue
+
+            # feedback: update button text briefly
+            try:
+                save_btn.setText(f"Saved {successes}")
+            except Exception:
+                pass
+
+        except Exception as e:
+            print("_save_inference_to_directus error:", e)
+            try:
+                save_btn = getattr(self, "saveInferenceButton", None)
+                if save_btn is not None:
+                    save_btn.setText("Save Error")
+            except Exception:
+                pass
