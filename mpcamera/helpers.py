@@ -8,6 +8,7 @@ Provided helpers:
 - parse_prediction_to_rows(result): convert an inference result to a list
   of (id, class_name, confidence_str) tuples ready for table insertion.
 """
+
 from __future__ import annotations
 
 import os

@@ -812,9 +812,7 @@ class MainWindow(BaseClass):
                 pass
 
             # Create worker and thread
-            worker = InferenceWorker(
-                api_key, workspace, workflow, vid_ref, max_fps=30
-            )
+            worker = InferenceWorker(api_key, workspace, workflow, vid_ref, max_fps=30)
             thread = QThread(self)
             worker.moveToThread(thread)
             thread.started.connect(worker.run)
@@ -863,7 +861,9 @@ class MainWindow(BaseClass):
                     self._inference_thread is not None
                     and self._inference_worker is not None
                 ):
-                    self._stop_worker_thread(self._inference_worker, self._inference_thread)
+                    self._stop_worker_thread(
+                        self._inference_worker, self._inference_thread
+                    )
                 self._inference_thread = None
                 self._inference_worker = None
             except Exception:
@@ -955,7 +955,9 @@ class MainWindow(BaseClass):
                     self._inference_thread is not None
                     and self._inference_worker is not None
                 ):
-                    self._stop_worker_thread(self._inference_worker, self._inference_thread)
+                    self._stop_worker_thread(
+                        self._inference_worker, self._inference_thread
+                    )
             except Exception:
                 pass
             finally:
@@ -973,7 +975,9 @@ class MainWindow(BaseClass):
                 and self._inference_worker is not None
             ):
                 try:
-                    self._stop_worker_thread(self._inference_worker, self._inference_thread)
+                    self._stop_worker_thread(
+                        self._inference_worker, self._inference_thread
+                    )
                 except Exception:
                     pass
                 # clear references so UI thinks inference is stopped
@@ -1090,9 +1094,7 @@ class MainWindow(BaseClass):
                 pass
 
             # Create worker and thread for image
-            worker = InferenceWorker(
-                api_key, workspace, workflow, img_path, max_fps=1
-            )
+            worker = InferenceWorker(api_key, workspace, workflow, img_path, max_fps=1)
             thread = QThread(self)
             worker.moveToThread(thread)
             thread.started.connect(worker.run)
