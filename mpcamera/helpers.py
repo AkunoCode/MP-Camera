@@ -168,3 +168,49 @@ def parse_prediction_to_rows(result: Any) -> List[Tuple[str, str, str]]:
         return rows
 
     return rows
+
+
+def simple_color_name(rgb: Tuple[int, int, int]) -> str:
+    """Map an (R,G,B) tuple to a simple color name.
+
+    Returns one of: 'blue', 'red', 'white', 'green', 'grey', 'yellow', 'black'.
+    Uses a small heuristic: if luminance is very high -> white; very low -> black;
+    if near-neutral -> grey; otherwise pick nearest from red/green/blue/yellow.
+    """
+    try:
+        r, g, b = int(rgb[0]), int(rgb[1]), int(rgb[2])
+    except Exception:
+        return "grey"
+
+    # luminance (rec. 709)
+    lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
+    if lum >= 240:
+        return "white"
+    if lum <= 15:
+        return "black"
+
+    # check neutral (grey) by small variance
+    mean = (r + g + b) / 3.0
+    if abs(r - mean) < 15 and abs(g - mean) < 15 and abs(b - mean) < 15:
+        return "grey"
+
+    # predefined representative RGBs for simple colors
+    candidates = {
+        "red": (255, 0, 0),
+        "green": (0, 255, 0),
+        "blue": (0, 0, 255),
+        "yellow": (255, 255, 0),
+    }
+
+    def dist_sq(a, b):
+        return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2
+
+    best = "grey"
+    best_d = float("inf")
+    for name, cref in candidates.items():
+        d = dist_sq((r, g, b), cref)
+        if d < best_d:
+            best_d = d
+            best = name
+
+    return best

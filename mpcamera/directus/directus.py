@@ -109,9 +109,27 @@ class DirectusClient:
         `image` field when creating a microplastic.
         """
         url = self._build_url("files")
+        # Provide filename and content-type to help Directus detect the file
+        # correctly. Use multipart/form-data with a tuple: (filename, fileobj, mime).
+        filename = os.path.basename(file_path)
+        mime = "image/png"
+        try:
+            # attempt to infer from extension
+            ext = os.path.splitext(filename)[1].lower()
+            if ext in (".jpg", ".jpeg"):
+                mime = "image/jpeg"
+            elif ext == ".bmp":
+                mime = "image/bmp"
+            elif ext == ".gif":
+                mime = "image/gif"
+        except Exception:
+            pass
+
         with open(file_path, "rb") as fh:
-            files = {"file": fh}
-            resp = self.session.post(url, files=files, timeout=self.timeout)
+            files = {"file": (filename, fh, mime)}
+            # include title metadata to make the file easier to find in Directus
+            data = {"title": filename}
+            resp = self.session.post(url, files=files, data=data, timeout=self.timeout)
         try:
             resp.raise_for_status()
         except requests.HTTPError:

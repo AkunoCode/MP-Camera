@@ -1502,14 +1502,19 @@ class MainWindow(BaseClass):
                     if crop is None or crop.size == 0:
                         continue
 
-                    # optionally compute a crude color label (mean BGR -> hex)
+                    # compute a simple color name (blue, red, white, green, grey, yellow, black)
                     try:
                         mean_bgr = _np.mean(_np.reshape(crop, (-1, 3)), axis=0)
-                        # convert to hex RGB
+                        # convert BGR -> RGB ordering
                         r, g, b = int(mean_bgr[2]), int(mean_bgr[1]), int(mean_bgr[0])
-                        color_hex = f"#{r:02x}{g:02x}{b:02x}"
+                        try:
+                            from mpcamera.helpers import simple_color_name
+
+                            color_name = simple_color_name((r, g, b))
+                        except Exception:
+                            color_name = "grey"
                     except Exception:
-                        color_hex = ""
+                        color_name = ""
 
                     # get shape/class and confidence using multiple fallbacks
                     shape = ""
@@ -1644,12 +1649,20 @@ class MainWindow(BaseClass):
                     if tf is None:
                         continue
 
-                    # upload file to Directus
+                    # upload file to Directus (debugging info included)
                     try:
+                        # file exists and size
+                        try:
+                            sz = os.path.getsize(tf) if tf and os.path.exists(tf) else None
+                        except Exception:
+                            sz = None
+                        print(f"Uploading file {tf!r}, size={sz}")
                         resp = client.upload_file(tf)
+                        print("Directus upload response:", resp)
                         # try to extract file id
                         file_id = None
                         if isinstance(resp, dict):
+                            # Directus typically returns {'data': {...}}
                             if "data" in resp and isinstance(resp.get("data"), dict):
                                 file_id = resp.get("data").get("id")
                             else:
@@ -1657,6 +1670,7 @@ class MainWindow(BaseClass):
                                 file_id = resp.get("id") or resp.get("data")
                         else:
                             file_id = None
+                        print("Resolved file_id:", file_id)
                     except Exception as e:
                         print("File upload failed:", e)
                         file_id = None
@@ -1665,7 +1679,7 @@ class MainWindow(BaseClass):
                     item = {
                         "sample_source": sample_id,
                         "shape": str(shape) if shape is not None else "",
-                        "color": color_hex,
+                        "color": color_name,
                         "confidence_level": float(conf) if conf is not None else None,
                         "magnification": mag_val,
                     }
