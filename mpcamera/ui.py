@@ -5,6 +5,9 @@ from PyQt5.QtWidgets import QSizePolicy
 from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEnginePage
 import cv2
 import os
+import logging
+
+from mpcamera.directus.directus import DirectusClient
 
 # Optional: enable remote debugging for Chromium (useful for devtools)
 # Port can be opened in a browser: http://localhost:9222
@@ -203,6 +206,22 @@ class MainWindow(BaseClass, FormClass):
             # Keep UI functional even if WebEngine isn't available; print error.
             print("Failed to create QWebEngineView:", e)
 
+        # After the UI is created and event loop starts, populate the farms
+        # combo box from Directus. Use a short singleShot to avoid running
+        # a network request before the window is shown.
+        try:
+            QTimer.singleShot(200, self._load_sites_from_directus)
+        except Exception:
+            pass
+
+        # Connect farm selection change to update the sample list
+        try:
+            combo = getattr(self, "farmComboBox", None)
+            if combo is not None:
+                combo.currentIndexChanged.connect(self._on_farm_changed)
+        except Exception:
+            pass
+
     # Camera control methods
     def start_camera(self, index=0):
         """Start capturing from camera index and display in `cameraView` label."""
@@ -271,3 +290,129 @@ class MainWindow(BaseClass, FormClass):
             label.repaint()
         except Exception as e:
             print("_read_camera_frame error:", e)
+
+    def _load_sites_from_directus(self):
+        """Fetch sites from Directus and populate `farmComboBox`.
+
+        The combo box item text will be the site/farm name and the
+        userData will be the Directus record id.
+        """
+        logger = logging.getLogger(__name__)
+        combo = getattr(self, "farmComboBox", None)
+        if combo is None:
+            logger.debug("No farmComboBox found in UI; skipping Directus load")
+            return
+
+        try:
+            client = DirectusClient()
+        except Exception as e:
+            logger.debug("DirectusClient init failed: %s", e)
+            return
+
+        try:
+            # Request only the id and farm/site name fields to reduce payload
+            params = {"fields": "id,farm_name,site_name", "limit": -1}
+            resp = client.get_sites(params=params)
+            # Directus typically returns {"data": [...]}
+            if isinstance(resp, dict) and "data" in resp:
+                sites = resp.get("data", [])
+            elif isinstance(resp, list):
+                sites = resp
+            else:
+                sites = []
+        except Exception as e:
+            logger.debug("Failed to fetch sites from Directus: %s", e)
+            sites = []
+
+        try:
+            combo.clear()
+            combo.addItem("Select a farm", None)
+            for s in sites:
+                # support multiple possible name fields for resilience
+                name = s.get("farm_name") or s.get("site_name") or s.get("name")
+                if not name:
+                    name = str(s.get("id", ""))
+                combo.addItem(name, s.get("id"))
+        except Exception as e:
+            logger.debug("Failed to populate farmComboBox: %s", e)
+
+    def _on_farm_changed(self, index: int):
+        """Handle farm selection changes and load soilsamples for the chosen site."""
+        try:
+            combo = getattr(self, "farmComboBox", None)
+            sample_combo = getattr(self, "sampleComboBox", None)
+            if combo is None or sample_combo is None:
+                return
+            # Use currentData() which returns the userData set when adding items
+            site_id = combo.itemData(index)
+            # If index corresponds to the placeholder (None), clear samples
+            if site_id in (None, "", 0):
+                sample_combo.clear()
+                sample_combo.addItem("Select a sample", None)
+                return
+            # Load samples for this site id
+            self._load_samples_for_site(site_id)
+        except Exception as e:
+            logging.getLogger(__name__).debug("_on_farm_changed error: %s", e)
+
+    def _load_samples_for_site(self, site_id):
+        """Fetch soilsamples from Directus filtered by `site` and populate `sampleComboBox`.
+
+        Uses Directus filter parameter `filter[site][_eq]=<id>` to request only
+        samples that belong to the chosen site.
+        """
+        logger = logging.getLogger(__name__)
+        combo = getattr(self, "sampleComboBox", None)
+        if combo is None:
+            logger.debug("No sampleComboBox found; skipping sample load")
+            return
+
+        try:
+            client = DirectusClient()
+        except Exception as e:
+            logger.debug("DirectusClient init failed for samples: %s", e)
+            return
+
+        try:
+            # Request id and date_collected so we can build the display string
+            params = {
+                "filter[site][_eq]": site_id,
+                "fields": "id,date_collected",
+                "limit": -1,
+            }
+            resp = client.get_soilsamples(params=params)
+            if isinstance(resp, dict) and "data" in resp:
+                samples = resp.get("data", [])
+            elif isinstance(resp, list):
+                samples = resp
+            else:
+                samples = []
+        except Exception as e:
+            logger.debug("Failed to fetch soilsamples from Directus: %s", e)
+            samples = []
+
+        try:
+            combo.clear()
+            combo.addItem("Select a sample", None)
+            for s in samples:
+                sid = s.get("id")
+                raw_date = s.get("date_collected")
+                # Normalize ISO date (YYYY-MM-DD) to DD-MM-YYYY for display
+                display_date = ""
+                try:
+                    if raw_date:
+                        # accept full ISO or date-only strings
+                        iso = str(raw_date).strip()
+                        date_part = iso.split("T")[0]
+                        y, m, d = date_part.split("-")
+                        display_date = f"{d}-{m}-{y}"
+                except Exception:
+                    display_date = str(raw_date)
+
+                text = f"Soil Sample {sid}"
+                if display_date:
+                    text = f"{text} - {display_date}"
+
+                combo.addItem(text, sid)
+        except Exception as e:
+            logger.debug("Failed to populate sampleComboBox: %s", e)
