@@ -18,6 +18,9 @@ import os
 import logging
 
 from mpcamera.directus.directus import DirectusClient
+from mpcamera.helpers import persist_env_var, parse_prediction_to_rows
+from mpcamera.inference_worker import InferenceWorker
+from mpcamera.camera import qimage_from_bgr_array, open_camera_device
 
 # Note: do NOT import `inference` at module import time — it can run
 # initialization code that affects global state (and can interfere with
@@ -352,16 +355,23 @@ class MainWindow(BaseClass):
         try:
             if self._camera_cap is not None:
                 return
-            cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
-            if not cap.isOpened():
-                # Try without CAP_DSHOW on some systems
-                cap = cv2.VideoCapture(index)
-            if not cap.isOpened():
-                print(f"Unable to open camera index {index}")
+
+            # prefer integer index for cameras; coerce when possible
+            ref = index
+            try:
+                if isinstance(index, str) and index.isdigit():
+                    ref = int(index)
+            except Exception:
+                pass
+
+            cap, backend_info = open_camera_device(ref)
+            if cap is None:
+                print(f"Unable to open camera {index} — {backend_info}")
                 return
+
             self._camera_cap = cap
             self._camera_timer.start()
-            print(f"Camera started (index={index})")
+            print(f"Camera started (index={index}) using backend {backend_info}")
         except Exception as e:
             print("start_camera failed:", e)
 
@@ -401,11 +411,8 @@ class MainWindow(BaseClass):
             ret, frame = cap.read()
             if not ret or frame is None:
                 return
-            # Convert BGR -> RGB
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            h, w, ch = frame.shape
-            bytes_per_line = ch * w
-            qimg = QImage(frame.data, w, h, bytes_per_line, QImage.Format_RGB888)
+            # Convert OpenCV frame to QImage using helper
+            qimg = qimage_from_bgr_array(frame)
             # Try to find the camera view label using the helper that handles
             # different suffix variants (e.g. cameraView_3, cameraView_4).
             label = self._find_widget("cameraView") or getattr(self, "cameraView", None)
@@ -598,58 +605,16 @@ class MainWindow(BaseClass):
             wf = combo.itemData(index)
             if not wf:
                 return
-            # Update runtime env
+            # Update runtime env and persist to project .env using helper
             os.environ["ROBOFLOW_WORKFLOW"] = str(wf)
-            # Persist to project .env
             try:
-                self._persist_env_var("ROBOFLOW_WORKFLOW", str(wf))
-            except Exception:
-                pass
-            # Update run button state when model changes
-            try:
-                self._update_run_button_state()
+                persist_env_var("ROBOFLOW_WORKFLOW", str(wf))
             except Exception:
                 pass
         except Exception:
             pass
 
-    def _persist_env_var(self, key: str, value: str):
-        """Persist a single KEY=VALUE into the repository `.env` file.
-
-        If the key exists it will be replaced; otherwise appended. This is a
-        best-effort helper and will not modify other environment files.
-        """
-        try:
-            root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-            env_path = os.path.join(root, ".env")
-            # If .env doesn't exist, create it with the entry
-            if not os.path.exists(env_path):
-                with open(env_path, "w", encoding="utf-8") as f:
-                    f.write(f"{key}={value}\n")
-                return
-
-            with open(env_path, "r", encoding="utf-8") as f:
-                lines = f.readlines()
-
-            found = False
-            for i, ln in enumerate(lines):
-                if ln.strip().startswith(f"{key}="):
-                    lines[i] = f"{key}={value}\n"
-                    found = True
-                    break
-
-            if not found:
-                # ensure newline separation
-                if lines and not lines[-1].endswith("\n"):
-                    lines[-1] = lines[-1] + "\n"
-                lines.append(f"{key}={value}\n")
-
-            with open(env_path, "w", encoding="utf-8") as f:
-                f.writelines(lines)
-        except Exception as e:
-            logging.getLogger(__name__).debug(
-                "Failed to persist .env var %s: %s", key, e
-            )
+    # `.env` persistence is handled by `mpcamera.helpers.persist_env_var`
 
     def _update_run_button_state(self, *args):
         """Enable Run Inference button only when a model is selected and an image is uploaded.
@@ -686,220 +651,69 @@ class MainWindow(BaseClass):
         except Exception:
             pass
 
-    # --- Inference integration -------------------------------------------------
-    class _InferenceWorker(QObject):
-        """Runs an InferencePipeline in a background thread and emits frames.
+    def _stop_worker_thread(self, worker, thread, timeout_ms=5000):
+        """Attempt to stop a worker moved to a QThread.
 
-        Signals:
-            frame_ready: emits a QImage to be shown in the UI
-            prediction: emits the raw prediction dict for logging/processing
-            error: emits a traceback string when exceptions occur in the worker
+        Strategy:
+          - request stop via queued call to worker.stop()
+          - wait `timeout_ms`
+          - if still running, try calling worker._pipeline.stop() if available
+          - wait a bit more, then quit/wait, then terminate as last resort
         """
-
-        frame_ready = pyqtSignal(QImage)
-        prediction = pyqtSignal(object)
-        finished = pyqtSignal()
-        error = pyqtSignal(str)
-
-        def __init__(self, api_key, workspace, workflow, video_reference, max_fps=30):
-            super().__init__()
-            self.api_key = api_key
-            self.workspace = workspace
-            self.workflow = workflow
-            self.video_reference = video_reference
-            self.max_fps = max_fps
-            self._pipeline = None
-            self._stopping = False
-
-        def _on_prediction(self, result, video_frame=None):
+        try:
+            if worker is None or thread is None:
+                return
             try:
-                # Try to extract polygon points from any instance segmentation masks
-                polygons = None
+                QMetaObject.invokeMethod(worker, "stop", Qt.QueuedConnection)
+            except Exception:
                 try:
-                    import numpy as _np
-
-                    preds_obj = None
-                    if isinstance(result, dict):
-                        preds_obj = result.get("predictions")
-                    else:
-                        preds_obj = getattr(result, "predictions", None)
-
-                    mask_arr = None
-                    if preds_obj is not None:
-                        # support dict-like or object with `.mask`
-                        if isinstance(preds_obj, dict):
-                            mask_arr = preds_obj.get("mask")
-                        else:
-                            mask_arr = getattr(preds_obj, "mask", None)
-
-                    if isinstance(mask_arr, _np.ndarray):
-                        polygons = []
-                        # mask_arr expected shape (N, H, W)
-                        for mi in range(mask_arr.shape[0]):
-                            m = mask_arr[mi].astype(_np.uint8) * 255
-                            try:
-                                contours, _ = cv2.findContours(
-                                    m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-                                )
-                            except Exception:
-                                contours = []
-                            item_polys = []
-                            for c in contours:
-                                if c is None or c.shape[0] < 3:
-                                    continue
-                                eps = 0.01 * cv2.arcLength(c, True)
-                                approx = cv2.approxPolyDP(c, eps, True)
-                                pts = [(int(p[0][0]), int(p[0][1])) for p in approx]
-                                if pts:
-                                    item_polys.append(pts)
-                            polygons.append(item_polys)
-                except Exception:
-                    polygons = None
-
-                # Attach polygons to the result if possible so callers can inspect points
-                try:
-                    if polygons is not None:
-                        if isinstance(result, dict):
-                            result["polygons"] = polygons
-                        else:
-                            try:
-                                setattr(result, "polygons", polygons)
-                            except Exception:
-                                pass
+                    worker.stop()
                 except Exception:
                     pass
 
-                # Emit raw prediction for any additional handling
-                self.prediction.emit(result)
-
-                # If workflow provided an image, try to convert and emit
-                img_obj = None
-                if isinstance(result, dict) and result.get("output_image"):
-                    img_obj = result["output_image"]
-
-                if img_obj is not None:
-                    # Many workflows expose `.numpy_image` or `.to_numpy()`
-                    arr = None
-                    if hasattr(img_obj, "numpy_image"):
-                        arr = getattr(img_obj, "numpy_image")
-                    elif hasattr(img_obj, "to_numpy"):
-                        arr = img_obj.to_numpy()
-                    elif hasattr(img_obj, "numpy"):
+            # initial wait
+            finished = thread.wait(timeout_ms)
+            if not finished:
+                # try direct pipeline stop if accessible
+                try:
+                    pl = getattr(worker, "_pipeline", None)
+                    if pl is not None and hasattr(pl, "stop"):
                         try:
-                            arr = img_obj.numpy()
-                        except Exception:
-                            arr = None
-
-                    if arr is not None:
-                        try:
-                            # Ensure we have a HxWxC numpy array
-                            import numpy as _np
-
-                            if isinstance(arr, _np.ndarray):
-                                # If OpenCV-style BGR convert to RGB; try to detect
-                                if arr.ndim == 3 and arr.shape[2] == 3:
-                                    try:
-                                        rgb = cv2.cvtColor(arr, cv2.COLOR_BGR2RGB)
-                                        qimg = QImage(
-                                            rgb.data,
-                                            rgb.shape[1],
-                                            rgb.shape[0],
-                                            rgb.strides[0],
-                                            QImage.Format_RGB888,
-                                        )
-                                    except Exception:
-                                        # Fallback to treating array as already RGB
-                                        qimg = QImage(
-                                            arr.data,
-                                            arr.shape[1],
-                                            arr.shape[0],
-                                            arr.strides[0],
-                                            QImage.Format_RGB888,
-                                        )
-                                    # Ensure the QImage owns its buffer to avoid flicker
-                                    try:
-                                        qimg = qimg.copy()
-                                    except Exception:
-                                        pass
-                                    self.frame_ready.emit(qimg)
-                                else:
-                                    # Fallback: try to construct from bytes
-                                    try:
-                                        data = arr.tobytes()
-                                        qimg = QImage(
-                                            data,
-                                            arr.shape[1],
-                                            arr.shape[0],
-                                            QImage.Format_Indexed8,
-                                        )
-                                        try:
-                                            qimg = qimg.copy()
-                                        except Exception:
-                                            pass
-                                        self.frame_ready.emit(qimg)
-                                    except Exception:
-                                        pass
+                            pl.stop()
                         except Exception:
                             pass
-            except Exception:
-                pass
-
-        def run(self):
-            # Lazy import to provide clearer error messages
-            try:
-                from inference import InferencePipeline
-            except Exception:
-                # No inference library available; report error back
-                import traceback
-
-                tb = traceback.format_exc()
-                try:
-                    self.error.emit(tb)
-                except Exception:
-                    pass
-                return
-
-            try:
-                self._pipeline = InferencePipeline.init_with_workflow(
-                    api_key=self.api_key,
-                    workspace_name=self.workspace,
-                    workflow_id=self.workflow,
-                    video_reference=self.video_reference,
-                    max_fps=self.max_fps,
-                    on_prediction=self._on_prediction,
-                )
-                self._pipeline.start()
-                # Wait until pipeline stops; pipeline.join() blocks until finish
-                try:
-                    self._pipeline.join()
-                except Exception:
-                    pass
-            except Exception:
-                import traceback
-
-                tb = traceback.format_exc()
-                try:
-                    self.error.emit(tb)
-                except Exception:
-                    pass
-            finally:
-                # Notify listeners that run() has finished (pipeline stopped or error)
-                try:
-                    self.finished.emit()
                 except Exception:
                     pass
 
-        @pyqtSlot()
-        def stop(self):
-            self._stopping = True
-            try:
-                if self._pipeline is not None and hasattr(self._pipeline, "stop"):
+                # wait a bit more
+                try:
+                    finished = thread.wait(int(timeout_ms / 2))
+                except Exception:
+                    finished = False
+
+                # polite quit
+                if not finished:
                     try:
-                        self._pipeline.stop()
+                        thread.quit()
+                        thread.wait(2000)
+                    except Exception:
+                        pass
+
+            # final resort: terminate
+            try:
+                if thread.isRunning():
+                    try:
+                        thread.terminate()
+                        thread.wait(1000)
                     except Exception:
                         pass
             except Exception:
                 pass
+
+        except Exception:
+            pass
+
+    # Inference worker extracted to `mpcamera.inference_worker.InferenceWorker`
 
     def _toggle_live_inference(self):
         """Start/stop the live inference pipeline when the button is toggled."""
@@ -930,12 +744,28 @@ class MainWindow(BaseClass):
                     # Wait for the thread to finish; give it a few seconds
                     finished = self._inference_thread.wait(5000)
                     if not finished:
-                        # try polite quit, then as last resort terminate
+                        # attempt to call pipeline.stop() directly if available
                         try:
-                            self._inference_thread.quit()
-                            self._inference_thread.wait(2000)
+                            pl = getattr(self._inference_worker, "_pipeline", None)
+                            if pl is not None and hasattr(pl, "stop"):
+                                try:
+                                    pl.stop()
+                                except Exception:
+                                    pass
                         except Exception:
                             pass
+
+                        # wait a bit more for the thread to exit
+                        finished = self._inference_thread.wait(3000)
+
+                        # try polite quit, then as last resort terminate
+                        if not finished:
+                            try:
+                                self._inference_thread.quit()
+                                self._inference_thread.wait(2000)
+                            except Exception:
+                                pass
+
                     # If still running, terminate (unsafe but avoids hanging)
                     if self._inference_thread.isRunning():
                         try:
@@ -982,7 +812,7 @@ class MainWindow(BaseClass):
                 pass
 
             # Create worker and thread
-            worker = MainWindow._InferenceWorker(
+            worker = InferenceWorker(
                 api_key, workspace, workflow, vid_ref, max_fps=30
             )
             thread = QThread(self)
@@ -1033,11 +863,7 @@ class MainWindow(BaseClass):
                     self._inference_thread is not None
                     and self._inference_worker is not None
                 ):
-                    QMetaObject.invokeMethod(
-                        self._inference_worker, "stop", Qt.QueuedConnection
-                    )
-                    self._inference_thread.quit()
-                    self._inference_thread.wait(2000)
+                    self._stop_worker_thread(self._inference_worker, self._inference_thread)
                 self._inference_thread = None
                 self._inference_worker = None
             except Exception:
@@ -1048,11 +874,9 @@ class MainWindow(BaseClass):
                     self._image_inference_thread is not None
                     and self._image_inference_worker is not None
                 ):
-                    QMetaObject.invokeMethod(
-                        self._image_inference_worker, "stop", Qt.QueuedConnection
+                    self._stop_worker_thread(
+                        self._image_inference_worker, self._image_inference_thread
                     )
-                    self._image_inference_thread.quit()
-                    self._image_inference_thread.wait(2000)
                 self._image_inference_thread = None
                 self._image_inference_worker = None
             except Exception:
@@ -1131,11 +955,7 @@ class MainWindow(BaseClass):
                     self._inference_thread is not None
                     and self._inference_worker is not None
                 ):
-                    QMetaObject.invokeMethod(
-                        self._inference_worker, "stop", Qt.QueuedConnection
-                    )
-                    self._inference_thread.quit()
-                    self._inference_thread.wait(2000)
+                    self._stop_worker_thread(self._inference_worker, self._inference_thread)
             except Exception:
                 pass
             finally:
@@ -1153,17 +973,7 @@ class MainWindow(BaseClass):
                 and self._inference_worker is not None
             ):
                 try:
-                    QMetaObject.invokeMethod(
-                        self._inference_worker, "stop", Qt.QueuedConnection
-                    )
-                except Exception:
-                    try:
-                        self._inference_worker.stop()
-                    except Exception:
-                        pass
-                try:
-                    self._inference_thread.quit()
-                    self._inference_thread.wait(2000)
+                    self._stop_worker_thread(self._inference_worker, self._inference_thread)
                 except Exception:
                     pass
                 # clear references so UI thinks inference is stopped
@@ -1273,16 +1083,14 @@ class MainWindow(BaseClass):
                     self._image_inference_thread is not None
                     and self._image_inference_worker is not None
                 ):
-                    QMetaObject.invokeMethod(
-                        self._image_inference_worker, "stop", Qt.QueuedConnection
+                    self._stop_worker_thread(
+                        self._image_inference_worker, self._image_inference_thread
                     )
-                    self._image_inference_thread.quit()
-                    self._image_inference_thread.wait(2000)
             except Exception:
                 pass
 
             # Create worker and thread for image
-            worker = MainWindow._InferenceWorker(
+            worker = InferenceWorker(
                 api_key, workspace, workflow, img_path, max_fps=1
             )
             thread = QThread(self)
@@ -1386,19 +1194,11 @@ class MainWindow(BaseClass):
         objects with attributes produced by the local `inference` package.
         """
         try:
-            # Resolve predictions container
-            preds = None
-            if isinstance(result, dict):
-                preds = result.get("predictions")
-            else:
-                preds = getattr(result, "predictions", None)
-
-            # Find the table widget (support suffixed names)
+            # Use helper parser to normalize prediction rows
             table = self._find_widget("inferenceTable") or getattr(
                 self, "inferenceTable", None
             )
             if table is None:
-                # nothing to populate
                 return
 
             # Clear existing rows
@@ -1407,158 +1207,32 @@ class MainWindow(BaseClass):
             except Exception:
                 pass
 
-            # If preds is None, nothing to show
-            if preds is None:
-                return
-
-            # Try to extract arrays
-            confidences = None
-            xyxy = None
-            data = None
-            polygons = None
-
             try:
-                confidences = getattr(preds, "confidence", None)
+                rows = parse_prediction_to_rows(result)
             except Exception:
-                confidences = None
+                rows = []
 
-            try:
-                xyxy = getattr(preds, "xyxy", None)
-            except Exception:
-                xyxy = None
+            from PyQt5.QtWidgets import QTableWidgetItem
+            from PyQt5.QtCore import Qt as _Qt
 
-            try:
-                data = getattr(preds, "data", None)
-            except Exception:
-                data = None
-
-            # If polygons were attached by the worker, look for them
-            try:
-                if isinstance(result, dict):
-                    polygons = result.get("polygons")
-                else:
-                    polygons = getattr(result, "polygons", None)
-            except Exception:
-                polygons = None
-
-            # Number of detections
-            n = 0
-            try:
-                import numpy as _np
-
-                if hasattr(confidences, "__len__") and not isinstance(
-                    confidences, float
-                ):
-                    try:
-                        n = int(len(confidences))
-                    except Exception:
-                        n = 0
-                elif xyxy is not None:
-                    try:
-                        n = int(xyxy.shape[0])
-                    except Exception:
-                        n = 0
-            except Exception:
-                n = 0
-
-            # Fallback: if data contains arrays use its length
-            if n == 0 and isinstance(data, dict):
-                for v in data.values():
-                    try:
-                        n = int(len(v))
-                        break
-                    except Exception:
-                        continue
-
-            # Populate rows
-            for i in range(n):
+            for det_id, cls_name, conf_str in rows:
                 try:
-                    # ID: prefer detection_id inside data
-                    det_id = ""
+                    # insert row
+                    row = table.rowCount()
+                    table.insertRow(row)
+                    id_item = QTableWidgetItem(str(det_id))
+                    shape_item = QTableWidgetItem(str(cls_name))
+                    conf_item = QTableWidgetItem(str(conf_str))
+                    # store numeric value for sorting if available
                     try:
-                        if isinstance(data, dict) and "detection_id" in data:
-                            det_val = data.get("detection_id")
-                            # data values may be numpy arrays
-                            try:
-                                det_id = str(det_val[i])
-                            except Exception:
-                                det_id = str(det_val)
-                        else:
-                            # fallback: use inference id or index
-                            if isinstance(data, dict) and "inference_id" in data:
-                                try:
-                                    det_id = str(data.get("inference_id")[i])
-                                except Exception:
-                                    det_id = str(i)
-                            else:
-                                det_id = str(i)
+                        num = float(conf_str)
+                        conf_item.setData(_Qt.UserRole, num)
                     except Exception:
-                        det_id = str(i)
+                        conf_item.setData(_Qt.UserRole, None)
 
-                    # Shape: show only the simple class name if available
-                    shape_str = ""
-                    try:
-                        cls_name = None
-                        # data may be a dict containing 'class_name'
-                        if isinstance(data, dict) and "class_name" in data:
-                            try:
-                                cls_val = data.get("class_name")
-                                cls_name = (
-                                    str(cls_val[i])
-                                    if hasattr(cls_val, "__len__")
-                                    else str(cls_val)
-                                )
-                            except Exception:
-                                cls_name = None
-                        else:
-                            # try attribute on preds
-                            try:
-                                val = getattr(preds, "class_name", None)
-                                if val is not None:
-                                    cls_name = (
-                                        str(val[i])
-                                        if hasattr(val, "__len__")
-                                        else str(val)
-                                    )
-                            except Exception:
-                                cls_name = None
-
-                        if cls_name:
-                            shape_str = cls_name
-                        else:
-                            shape_str = ""
-                    except Exception:
-                        shape_str = ""
-
-                    # Confidence
-                    conf_val = ""
-                    try:
-                        if confidences is not None:
-                            try:
-                                c = float(confidences[i])
-                                conf_val = f"{c:.3f}"
-                            except Exception:
-                                conf_val = str(confidences[i])
-                        else:
-                            conf_val = ""
-                    except Exception:
-                        conf_val = ""
-
-                    # Insert row into table
-                    try:
-                        row = table.rowCount()
-                        table.insertRow(row)
-                        # ID
-                        from PyQt5.QtWidgets import QTableWidgetItem
-
-                        id_item = QTableWidgetItem(det_id)
-                        shape_item = QTableWidgetItem(shape_str)
-                        conf_item = QTableWidgetItem(conf_val)
-                        table.setItem(row, 0, id_item)
-                        table.setItem(row, 1, shape_item)
-                        table.setItem(row, 2, conf_item)
-                    except Exception:
-                        pass
+                    table.setItem(row, 0, id_item)
+                    table.setItem(row, 1, shape_item)
+                    table.setItem(row, 2, conf_item)
                 except Exception:
                     continue
         except Exception:
