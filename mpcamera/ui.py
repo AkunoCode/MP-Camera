@@ -82,16 +82,21 @@ class MainWindow(BaseClass):
             )
             if cam_label is not None:
                 try:
-                    cam_label.setFixedSize(658, 432)
-                    cam_label.setMinimumSize(658, 432)
-                    cam_label.setMaximumSize(658, 432)
-                    cam_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+                    # Allow layout to size the camera view; provide a reasonable minimum
+                    cam_label.setMinimumSize(320, 240)
+                    cam_label.setSizePolicy(
+                        QSizePolicy.Preferred, QSizePolicy.Preferred
+                    )
                     cam_label.setContentsMargins(0, 0, 0, 0)
                     cam_label.setAlignment(Qt.AlignCenter)
                     cam_label.setScaledContents(False)
                     cam_label.updateGeometry()
                 except Exception:
-                    cam_label.resize(658, 432)
+                    # best-effort fallback
+                    try:
+                        cam_label.resize(658, 432)
+                    except Exception:
+                        pass
         except Exception:
             pass
 
@@ -213,10 +218,10 @@ class MainWindow(BaseClass):
                     # Handle possible suffixes like camera_page_7 by checking objectName
                     if current is not None:
                         name = getattr(current, "objectName", lambda: "")()
+                        # Do not auto-start the camera on page change anymore.
+                        # Camera is controlled by the `controlCamera` button.
                         if name.startswith("camera_page") or name == "camera_page":
-                            # start camera if not running
-                            if self._camera_cap is None:
-                                self.start_camera(0)
+                            # keep camera state as-is when entering camera page
                             return
                     # otherwise stop camera
                     self.stop_camera()
@@ -271,6 +276,14 @@ class MainWindow(BaseClass):
         except Exception:
             pass
 
+        # controlCamera toggles camera on/off and starts/stops live inference
+        try:
+            ctrl_btn = getattr(self, "controlCamera", None)
+            if ctrl_btn is not None:
+                ctrl_btn.clicked.connect(self._toggle_control_camera)
+        except Exception:
+            pass
+
         # Upload image button -> select image (image inference tab)
         try:
             up_btn = (
@@ -292,8 +305,12 @@ class MainWindow(BaseClass):
                 or getattr(self, "runImgInferenceButton_2", None)
                 or getattr(self, "runImgInferenceButton", None)
             )
+            # connect the run button to start image inference (if present)
             if run_btn is not None:
-                run_btn.clicked.connect(self._run_image_inference_clicked)
+                try:
+                    run_btn.clicked.connect(self._run_image_inference_clicked)
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -321,6 +338,29 @@ class MainWindow(BaseClass):
             )
             if cap_btn is not None:
                 cap_btn.clicked.connect(self._freeze_video_inference)
+        except Exception:
+            pass
+
+        # New small capture and clear buttons (if present) -> connect to handlers
+        try:
+            cap_frame_btn = (
+                getattr(self, "captureFrameButton_2", None)
+                or getattr(self, "captureFrameButton", None)
+                or self._find_widget("captureFrameButton")
+            )
+            if cap_frame_btn is not None:
+                cap_frame_btn.clicked.connect(self._capture_frame)
+        except Exception:
+            pass
+
+        try:
+            clear_btn = (
+                getattr(self, "clearViewButton_2", None)
+                or getattr(self, "clearViewButton", None)
+                or self._find_widget("clearViewButton")
+            )
+            if clear_btn is not None:
+                clear_btn.clicked.connect(self._clear_view)
         except Exception:
             pass
 
@@ -386,6 +426,9 @@ class MainWindow(BaseClass):
         """Start capturing from camera index and display in `cameraView` label."""
         try:
             if self._camera_cap is not None:
+                logging.getLogger(__name__).debug(
+                    "start_camera called but _camera_cap already set"
+                )
                 return
 
             # prefer integer index for cameras; coerce when possible
@@ -402,8 +445,14 @@ class MainWindow(BaseClass):
                 return
 
             self._camera_cap = cap
-            self._camera_timer.start()
-            print(f"Camera started (index={index}) using backend {backend_info}")
+            # small diagnostic note
+            logging.getLogger(__name__).info(
+                f"Camera started (index={index}) using backend {backend_info}"
+            )
+            try:
+                self._camera_timer.start()
+            except Exception:
+                logging.getLogger(__name__).debug("Failed to start _camera_timer")
         except Exception as e:
             print("start_camera failed:", e)
 
@@ -422,22 +471,246 @@ class MainWindow(BaseClass):
     def stop_camera(self):
         """Stop camera capture and release resources."""
         try:
+            lg = logging.getLogger(__name__)
             if self._camera_timer.isActive():
-                self._camera_timer.stop()
+                try:
+                    self._camera_timer.stop()
+                except Exception:
+                    lg.debug("_camera_timer.stop() raised")
+            else:
+                lg.debug("_camera_timer was not active")
+
             if self._camera_cap is not None:
                 try:
-                    self._camera_cap.release()
+                    # attempt release
+                    try:
+                        self._camera_cap.release()
+                        lg.info("_camera_cap.release() called")
+                    except Exception as e:
+                        lg.debug("_camera_cap.release() raised: %s", e)
+                finally:
+                    # clear reference
+                    self._camera_cap = None
+                    lg.info("Camera stopped")
+            else:
+                lg.debug("stop_camera called but _camera_cap is already None")
+        except Exception as e:
+            logging.getLogger(__name__).error("stop_camera failed: %s", e)
+
+    def _toggle_control_camera(self):
+        """Toggle camera on/off. When turning on, also start live inference."""
+        try:
+            btn = getattr(self, "controlCamera", None)
+            # determine video ref
+            vid_ref = 0
+            try:
+                inp = self._find_widget("inputComboBox")
+                if inp is not None:
+                    data = inp.currentData()
+                    if isinstance(data, int):
+                        vid_ref = int(data)
+            except Exception:
+                pass
+
+            # If camera running -> stop camera and stop inference
+            if self._camera_cap is not None:
+                # First, stop any running inference workers that may hold the
+                # camera device open. Use the robust _stop_worker_thread helper
+                # which waits for threads to finish and terminates if necessary.
+                try:
+                    if (
+                        self._inference_thread is not None
+                        and self._inference_worker is not None
+                    ):
+                        try:
+                            self._stop_worker_thread(
+                                self._inference_worker, self._inference_thread
+                            )
+                        except Exception:
+                            pass
+                        self._inference_thread = None
+                        self._inference_worker = None
                 except Exception:
                     pass
-                self._camera_cap = None
-                print("Camera stopped")
+                try:
+                    if (
+                        self._image_inference_thread is not None
+                        and self._image_inference_worker is not None
+                    ):
+                        try:
+                            self._stop_worker_thread(
+                                self._image_inference_worker,
+                                self._image_inference_thread,
+                            )
+                        except Exception:
+                            pass
+                        self._image_inference_thread = None
+                        self._image_inference_worker = None
+                except Exception:
+                    pass
+
+                # Now stop the GUI-side camera and timer
+                try:
+                    # provide quick UI feedback if possible
+                    try:
+                        if btn is not None:
+                            btn.setText("Stopping...")
+                            btn.setEnabled(False)
+                    except Exception:
+                        pass
+
+                    self.stop_camera()
+
+                    # As a fallback, attempt to forcibly release common camera indices
+                    # in case a worker or pipeline left a handle open that wasn't
+                    # closed by the normal stop sequence. This is a last-resort
+                    # measure and is guarded by try/except to avoid crashes.
+                    try:
+                        for test_idx in (0, 1, 2):
+                            try:
+                                tmp = cv2.VideoCapture(test_idx)
+                                try:
+                                    tmp.release()
+                                except Exception:
+                                    pass
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+                finally:
+                    try:
+                        if btn is not None:
+                            btn.setEnabled(True)
+                            btn.setText("Start Camera")
+                    except Exception:
+                        pass
+                try:
+                    if btn is not None:
+                        btn.setText("Start Camera")
+                except Exception:
+                    pass
+                return
+
+            # Start camera and start live inference
+            try:
+                self.start_camera(vid_ref)
+            except Exception:
+                pass
+
+            # Start live inference if not already running
+            try:
+                if self._inference_thread is None:
+                    self._toggle_live_inference()
+            except Exception:
+                pass
+
+            try:
+                if btn is not None:
+                    btn.setText("Stop Camera")
+            except Exception:
+                pass
         except Exception as e:
-            print("stop_camera failed:", e)
+            logging.getLogger(__name__).debug("_toggle_control_camera error: %s", e)
+
+    def _capture_frame(self):
+        """Capture a single frame from the camera, display it, and stop the camera and live inference."""
+        try:
+            cap = self._camera_cap
+            if cap is None:
+                return
+            ret, frame = cap.read()
+            if not ret or frame is None:
+                return
+            qimg = qimage_from_bgr_array(frame)
+
+            # stop camera preview
+            try:
+                self.stop_camera()
+            except Exception:
+                pass
+
+            # stop live inference if running
+            try:
+                if self._inference_thread is not None:
+                    self._toggle_live_inference()
+            except Exception:
+                pass
+
+            # display snapshot in cameraView
+            try:
+                label = self._find_widget("cameraView") or getattr(
+                    self, "cameraView", None
+                )
+                if label is not None and qimg is not None:
+                    self._last_inference_qimage = (
+                        qimg.copy() if hasattr(qimg, "copy") else QImage(qimg)
+                    )
+                    pix = QPixmap.fromImage(qimg)
+                    try:
+                        target_w = label.width() or 658
+                        target_h = label.height() or 432
+                    except Exception:
+                        target_w, target_h = 658, 432
+                    scaled = pix.scaled(
+                        target_w, target_h, Qt.KeepAspectRatio, Qt.SmoothTransformation
+                    )
+                    label.setPixmap(scaled)
+                    label.repaint()
+            except Exception:
+                pass
+
+            # clear uploaded image path since this is a snapshot
+            try:
+                self._uploaded_image_path = None
+            except Exception:
+                pass
+        except Exception as e:
+            logging.getLogger(__name__).debug("_capture_frame error: %s", e)
+
+    def _clear_view(self):
+        """Clear the image shown in cameraView and remove inference results."""
+        try:
+            label = self._find_widget("cameraView") or getattr(self, "cameraView", None)
+            if label is not None:
+                try:
+                    label.clear()
+                except Exception:
+                    pass
+            # clear last image and prediction
+            try:
+                self._uploaded_image_path = None
+            except Exception:
+                pass
+            try:
+                self._last_inference_qimage = None
+            except Exception:
+                pass
+            try:
+                self._last_prediction = None
+            except Exception:
+                pass
+            # clear table
+            try:
+                tbl = getattr(self, "inferenceTable", None)
+                if tbl is not None:
+                    tbl.setRowCount(0)
+            except Exception:
+                pass
+            # update save button state
+            try:
+                self._update_save_button_state()
+            except Exception:
+                pass
+        except Exception as e:
+            logging.getLogger(__name__).debug("_clear_view error: %s", e)
 
     def _read_camera_frame(self):
         """Read a frame from the camera and display it in `cameraView`."""
         try:
             cap = self._camera_cap
+            logging.getLogger(__name__).debug("_read_camera_frame: cap=%s", bool(cap))
             if cap is None:
                 return
             ret, frame = cap.read()
@@ -750,9 +1023,12 @@ class MainWindow(BaseClass):
     def _toggle_live_inference(self):
         """Start/stop the live inference pipeline when the button is toggled."""
         try:
-            btn = getattr(self, "liveInferenceButton", None)
-            if btn is None:
-                return
+            # Support multiple naming variants for the live inference button.
+            # If no button exists, still allow starting/stopping inference
+            # when called programmatically (e.g. from `controlCamera`).
+            btn = self._find_widget("liveInferenceButton") or getattr(
+                self, "liveInferenceButton", None
+            )
 
             # If already running, stop
             if self._inference_thread is not None:
@@ -946,6 +1222,11 @@ class MainWindow(BaseClass):
                         # Update run button state now that an image is available
                         try:
                             self._update_run_button_state()
+                        except Exception:
+                            pass
+                        # Automatically start image inference for uploaded image
+                        try:
+                            self._run_image_inference_clicked()
                         except Exception:
                             pass
             except Exception:
@@ -1266,10 +1547,9 @@ class MainWindow(BaseClass):
 
             for det_id, cls_name, conf_str in rows:
                 try:
-                    # insert row
+                    # insert row (two columns: Shape, Confidence)
                     row = table.rowCount()
                     table.insertRow(row)
-                    id_item = QTableWidgetItem(str(det_id))
                     shape_item = QTableWidgetItem(str(cls_name))
                     conf_item = QTableWidgetItem(str(conf_str))
                     # store numeric value for sorting if available
@@ -1279,9 +1559,8 @@ class MainWindow(BaseClass):
                     except Exception:
                         conf_item.setData(_Qt.UserRole, None)
 
-                    table.setItem(row, 0, id_item)
-                    table.setItem(row, 1, shape_item)
-                    table.setItem(row, 2, conf_item)
+                    table.setItem(row, 0, shape_item)
+                    table.setItem(row, 1, conf_item)
                 except Exception:
                     continue
             # update save button state now that new results exist
@@ -1653,7 +1932,11 @@ class MainWindow(BaseClass):
                     try:
                         # file exists and size
                         try:
-                            sz = os.path.getsize(tf) if tf and os.path.exists(tf) else None
+                            sz = (
+                                os.path.getsize(tf)
+                                if tf and os.path.exists(tf)
+                                else None
+                            )
                         except Exception:
                             sz = None
                         print(f"Uploading file {tf!r}, size={sz}")

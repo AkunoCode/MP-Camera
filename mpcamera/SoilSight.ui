@@ -400,13 +400,13 @@
           <property name="minimumSize">
            <size>
             <width>714</width>
-            <height>700</height>
+            <height>500</height>
            </size>
           </property>
           <property name="maximumSize">
            <size>
             <width>714</width>
-            <height>700</height>
+            <height>16777215</height>
            </size>
           </property>
           <layout class="QVBoxLayout" name="verticalLayout_28">
@@ -715,15 +715,15 @@
              <item>
               <widget class="QLabel" name="cameraView">
                <property name="sizePolicy">
-                <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
+                <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
                  <horstretch>0</horstretch>
                  <verstretch>0</verstretch>
                 </sizepolicy>
                </property>
                <property name="minimumSize">
                 <size>
-                 <width>658</width>
-                 <height>432</height>
+                 <width>400</width>
+                 <height>300</height>
                 </size>
                </property>
                <property name="styleSheet">
@@ -746,7 +746,7 @@ border-radius: 5px;
               <number>12</number>
              </property>
              <item>
-              <widget class="QPushButton" name="liveInferenceButton">
+              <widget class="QPushButton" name="controlCamera">
                <property name="sizePolicy">
                 <sizepolicy hsizetype="Minimum" vsizetype="Maximum">
                  <horstretch>0</horstretch>
@@ -770,12 +770,49 @@ border-radius: 5px;
 }</string>
                </property>
                <property name="text">
-                <string>Live Inference: OFF</string>
+                <string>Start Camera</string>
                </property>
               </widget>
              </item>
              <item>
-              <widget class="QPushButton" name="captureButton">
+              <widget class="QPushButton" name="uploadImgButton">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Minimum" vsizetype="Maximum">
+                 <horstretch>0</horstretch>
+                 <verstretch>0</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="minimumSize">
+                <size>
+                 <width>0</width>
+                 <height>40</height>
+                </size>
+               </property>
+               <property name="styleSheet">
+                <string notr="true">QPushButton {
+font: 17px &quot;Inter&quot;;
+font-weight:bold;
+	background-color: white;
+	color: black;
+border-radius: 5px;
+border: 1px solid black;
+
+}</string>
+               </property>
+               <property name="text">
+                <string>Upload Image</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="horizontalLayout_46" stretch="0,0">
+             <property name="spacing">
+              <number>12</number>
+             </property>
+             <item>
+              <widget class="QPushButton" name="captureFrameButton">
                <property name="sizePolicy">
                 <sizepolicy hsizetype="Minimum" vsizetype="Maximum">
                  <horstretch>0</horstretch>
@@ -803,15 +840,8 @@ border-radius: 5px;
                </property>
               </widget>
              </item>
-            </layout>
-           </item>
-           <item>
-            <layout class="QHBoxLayout" name="horizontalLayout_46" stretch="0,0">
-             <property name="spacing">
-              <number>12</number>
-             </property>
              <item>
-              <widget class="QPushButton" name="uploadImgButton">
+              <widget class="QPushButton" name="clearViewButton">
                <property name="sizePolicy">
                 <sizepolicy hsizetype="Minimum" vsizetype="Maximum">
                  <horstretch>0</horstretch>
@@ -835,36 +865,7 @@ border-radius: 5px;
 }</string>
                </property>
                <property name="text">
-                <string>Upload Image</string>
-               </property>
-              </widget>
-             </item>
-             <item>
-              <widget class="QPushButton" name="imageInferenceButton">
-               <property name="sizePolicy">
-                <sizepolicy hsizetype="Minimum" vsizetype="Maximum">
-                 <horstretch>0</horstretch>
-                 <verstretch>0</verstretch>
-                </sizepolicy>
-               </property>
-               <property name="minimumSize">
-                <size>
-                 <width>0</width>
-                 <height>40</height>
-                </size>
-               </property>
-               <property name="styleSheet">
-                <string notr="true">QPushButton {
-font: 17px &quot;Inter&quot;;
-font-weight:bold;
-	background-color: rgb(49, 49, 49);
-	color: rgb(255, 255, 255);
-border-radius: 5px;
-
-}</string>
-               </property>
-               <property name="text">
-                <string>Detect From Image</string>
+                <string>Clear View</string>
                </property>
               </widget>
              </item>
@@ -898,7 +899,7 @@ border-radius: 5px;
            <rect>
             <x>20</x>
             <y>30</y>
-            <width>392</width>
+            <width>342</width>
             <height>37</height>
            </rect>
           </property>
@@ -912,20 +913,311 @@ border-radius: 5px;
            <string notr="true">QLabel {
     font-family: &quot;Inter&quot;;
     font-size: 26px;
-	font-weight: bold
+    font-weight: bold
 }</string>
           </property>
           <property name="text">
            <string>Inference Results</string>
           </property>
          </widget>
-         <widget class="QTableWidget" name="inferenceTable">
+         <widget class="QWidget" name="statsWidget" native="true">
           <property name="geometry">
            <rect>
             <x>20</x>
             <y>80</y>
+            <width>323</width>
+            <height>219</height>
+           </rect>
+          </property>
+          <property name="styleSheet">
+           <string notr="true">QWidget{background: transparent;}
+QFrame.statCard{background: white; border: 1px solid rgb(220,220,220); border-radius: 8px;}
+QLabel.statNumber{font: 24px &quot;Inter&quot;; font-weight: bold;}
+QLabel.statLabel{color: rgb(120,120,120); font: 12px &quot;Inter&quot;;}
+</string>
+          </property>
+          <layout class="QHBoxLayout" name="horizontalLayout_4">
+           <property name="leftMargin">
+            <number>0</number>
+           </property>
+           <property name="topMargin">
+            <number>0</number>
+           </property>
+           <property name="rightMargin">
+            <number>0</number>
+           </property>
+           <property name="bottomMargin">
+            <number>0</number>
+           </property>
+           <item>
+            <layout class="QVBoxLayout" name="verticalLayout_2">
+             <property name="bottomMargin">
+              <number>0</number>
+             </property>
+             <item>
+              <widget class="QFrame" name="totalCard">
+               <property name="styleSheet">
+                <string notr="true">#totalCard{background:white; border: 1px solid rgb(220,220,220); border-radius:8px;}</string>
+               </property>
+               <property name="frameShape">
+                <enum>QFrame::StyledPanel</enum>
+               </property>
+               <property name="frameShadow">
+                <enum>QFrame::Raised</enum>
+               </property>
+               <layout class="QHBoxLayout" name="horizontalLayout">
+                <property name="spacing">
+                 <number>0</number>
+                </property>
+                <property name="leftMargin">
+                 <number>10</number>
+                </property>
+                <property name="topMargin">
+                 <number>10</number>
+                </property>
+                <property name="rightMargin">
+                 <number>10</number>
+                </property>
+                <property name="bottomMargin">
+                 <number>10</number>
+                </property>
+                <item>
+                 <widget class="QLabel" name="totalCount">
+                  <property name="styleSheet">
+                   <string notr="true">QLabel {font: 26px &quot;Inter&quot;; font-weight: 800;}</string>
+                  </property>
+                  <property name="text">
+                   <string>Total MPs</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </item>
+             <item>
+              <widget class="QFrame" name="fragmentCard">
+               <property name="styleSheet">
+                <string notr="true">#fragmentCard{background:white; border: 1px solid rgb(220,220,220); border-radius:8px;}</string>
+               </property>
+               <layout class="QHBoxLayout" name="horizontalLayout_14">
+                <property name="leftMargin">
+                 <number>10</number>
+                </property>
+                <property name="topMargin">
+                 <number>10</number>
+                </property>
+                <property name="rightMargin">
+                 <number>10</number>
+                </property>
+                <property name="bottomMargin">
+                 <number>10</number>
+                </property>
+                <item>
+                 <widget class="QLabel" name="fragmentCount">
+                  <property name="text">
+                   <string>No. of Fragments</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </item>
+             <item>
+              <widget class="QFrame" name="pelletCard">
+               <property name="styleSheet">
+                <string notr="true">#pelletCard{background:white; border: 1px solid rgb(220,220,220); border-radius:8px;}</string>
+               </property>
+               <layout class="QHBoxLayout" name="horizontalLayout_17">
+                <property name="leftMargin">
+                 <number>10</number>
+                </property>
+                <property name="topMargin">
+                 <number>10</number>
+                </property>
+                <property name="rightMargin">
+                 <number>10</number>
+                </property>
+                <property name="bottomMargin">
+                 <number>10</number>
+                </property>
+                <item>
+                 <widget class="QLabel" name="pelletCount">
+                  <property name="text">
+                   <string>No. of Pellet</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </item>
+             <item>
+              <widget class="QFrame" name="filmCard">
+               <property name="styleSheet">
+                <string notr="true">#filmCard{background:white; border: 1px solid rgb(220,220,220); border-radius:8px;}</string>
+               </property>
+               <layout class="QHBoxLayout" name="horizontalLayout_16">
+                <property name="leftMargin">
+                 <number>10</number>
+                </property>
+                <property name="topMargin">
+                 <number>10</number>
+                </property>
+                <property name="rightMargin">
+                 <number>10</number>
+                </property>
+                <property name="bottomMargin">
+                 <number>10</number>
+                </property>
+                <item>
+                 <widget class="QLabel" name="filmCount">
+                  <property name="text">
+                   <string>No. of Film</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <layout class="QVBoxLayout" name="verticalLayout_3">
+             <property name="bottomMargin">
+              <number>0</number>
+             </property>
+             <item>
+              <widget class="QFrame" name="confCard">
+               <property name="styleSheet">
+                <string notr="true">#confCard
+{background:white; border: 1px solid rgb(220,220,220); border-radius:8px;}</string>
+               </property>
+               <property name="frameShape">
+                <enum>QFrame::StyledPanel</enum>
+               </property>
+               <property name="frameShadow">
+                <enum>QFrame::Raised</enum>
+               </property>
+               <layout class="QHBoxLayout" name="horizontalLayout_15">
+                <property name="leftMargin">
+                 <number>5</number>
+                </property>
+                <property name="topMargin">
+                 <number>5</number>
+                </property>
+                <property name="rightMargin">
+                 <number>5</number>
+                </property>
+                <property name="bottomMargin">
+                 <number>5</number>
+                </property>
+                <item>
+                 <widget class="QLabel" name="aveConfidence">
+                  <property name="styleSheet">
+                   <string notr="true">QLabel {font: 26px &quot;Inter&quot;; font-weight: 800;}</string>
+                  </property>
+                  <property name="text">
+                   <string>~Conf.%</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </item>
+             <item>
+              <widget class="QFrame" name="fiberCard">
+               <property name="styleSheet">
+                <string notr="true">#fiberCard{background:white; border: 1px solid rgb(220,220,220); border-radius:8px;}</string>
+               </property>
+               <layout class="QHBoxLayout" name="horizontalLayout_13">
+                <property name="leftMargin">
+                 <number>10</number>
+                </property>
+                <property name="topMargin">
+                 <number>10</number>
+                </property>
+                <property name="rightMargin">
+                 <number>10</number>
+                </property>
+                <property name="bottomMargin">
+                 <number>10</number>
+                </property>
+                <item>
+                 <widget class="QLabel" name="fiberCount">
+                  <property name="text">
+                   <string>No. of Fibers</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </item>
+             <item>
+              <widget class="QFrame" name="sheetCard">
+               <property name="styleSheet">
+                <string notr="true">#sheetCard{background:white; border: 1px solid rgb(220,220,220); border-radius:8px;}</string>
+               </property>
+               <layout class="QHBoxLayout" name="horizontalLayout_19">
+                <property name="leftMargin">
+                 <number>10</number>
+                </property>
+                <property name="topMargin">
+                 <number>10</number>
+                </property>
+                <property name="rightMargin">
+                 <number>10</number>
+                </property>
+                <property name="bottomMargin">
+                 <number>10</number>
+                </property>
+                <item>
+                 <widget class="QLabel" name="sheetCount">
+                  <property name="text">
+                   <string>No. of Sheets</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </item>
+             <item>
+              <widget class="QFrame" name="foamCard">
+               <property name="styleSheet">
+                <string notr="true">#foamCard{background:white; border: 1px solid rgb(220,220,220); border-radius:8px;}</string>
+               </property>
+               <layout class="QHBoxLayout" name="horizontalLayout_18">
+                <property name="leftMargin">
+                 <number>10</number>
+                </property>
+                <property name="topMargin">
+                 <number>10</number>
+                </property>
+                <property name="rightMargin">
+                 <number>10</number>
+                </property>
+                <property name="bottomMargin">
+                 <number>10</number>
+                </property>
+                <item>
+                 <widget class="QLabel" name="foamCount">
+                  <property name="text">
+                   <string>No. of Foams</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </item>
+            </layout>
+           </item>
+          </layout>
+         </widget>
+         <widget class="QTableWidget" name="inferenceTable">
+          <property name="geometry">
+           <rect>
+            <x>20</x>
+            <y>319</y>
             <width>321</width>
-            <height>589</height>
+            <height>351</height>
            </rect>
           </property>
           <property name="sizePolicy">
@@ -934,14 +1226,66 @@ border-radius: 5px;
             <verstretch>0</verstretch>
            </sizepolicy>
           </property>
-          <property name="columnCount">
-           <number>6</number>
+          <property name="styleSheet">
+           <string notr="true">/* ---- TABLE CONTAINER ---- */
+QTableWidget {
+    background: white;
+    border: 1px solid rgb(220,220,220);
+    border-radius: 12px;
+    gridline-color: transparent;      /* Remove old-school grid lines */
+    font-size: 14px;
+    selection-background-color: rgb(230, 240, 255);
+    selection-color: black;
+}
+
+
+
+/* Rounded top-left + top-right header corners */
+QHeaderView::section:first {
+    border-top-left-radius: 12px;
+}
+QHeaderView::section:last {
+    border-top-right-radius: 12px;
+}
+
+/* ---- ROWS ---- */
+QTableWidget::item {
+    padding: 10px;
+    border-bottom: 1px solid rgb(235,235,235);
+}
+
+/* Remove the last bottom border */
+QTableWidget::item:last {
+    border-bottom: none;
+}
+
+/* ---- SCROLLBAR ---- */
+QScrollBar:vertical {
+    background: transparent;
+    width: 10px;
+    margin: 4px;
+    border-radius: 5px;
+}
+
+QScrollBar::handle:vertical {
+    background: rgb(200,200,200);
+    border-radius: 5px;
+    min-height: 20px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: rgb(170,170,170);
+}
+
+QScrollBar::add-line,
+QScrollBar::sub-line {
+    height: 0;
+}
+</string>
           </property>
-          <column>
-           <property name="text">
-            <string>ID</string>
-           </property>
-          </column>
+          <property name="columnCount">
+           <number>2</number>
+          </property>
           <column>
            <property name="text">
             <string>Shape</string>
@@ -952,9 +1296,6 @@ border-radius: 5px;
             <string>Confidence</string>
            </property>
           </column>
-          <column/>
-          <column/>
-          <column/>
          </widget>
          <widget class="QPushButton" name="saveInferenceButton">
           <property name="geometry">
@@ -981,8 +1322,8 @@ border-radius: 5px;
            <string notr="true">QPushButton {
 font: 17px &quot;Inter&quot;;
 font-weight:bold;
-	background-color: rgb(49, 49, 49);
-	color: rgb(255, 255, 255);
+    background-color: rgb(49, 49, 49);
+    color: rgb(255, 255, 255);
 border-radius: 5px;
 
 }</string>
