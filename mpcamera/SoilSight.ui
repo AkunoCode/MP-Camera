@@ -223,46 +223,6 @@
         </item>
        </layout>
       </item>
-      <item>
-       <layout class="QHBoxLayout" name="horizontalLayout_9">
-        <item>
-         <widget class="QPushButton" name="chartNavButton">
-          <property name="enabled">
-           <bool>true</bool>
-          </property>
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
-          <property name="layoutDirection">
-           <enum>Qt::LeftToRight</enum>
-          </property>
-          <property name="styleSheet">
-           <string notr="true">QPushButton {
-    background-color: none;       /* removes default background */
-    border: none;                 /* removes border */
-    box-shadow: none;             /* removes any shadow effect */
-}</string>
-          </property>
-          <property name="text">
-           <string/>
-          </property>
-          <property name="icon">
-           <iconset>
-            <normaloff>assets/ChartGrey.png</normaloff>assets/ChartGrey.png</iconset>
-          </property>
-          <property name="iconSize">
-           <size>
-            <width>32</width>
-            <height>32</height>
-           </size>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
      </layout>
     </widget>
     <widget class="QWidget" name="layoutWidget">
@@ -330,7 +290,7 @@
      </sizepolicy>
     </property>
     <property name="currentIndex">
-     <number>1</number>
+     <number>3</number>
     </property>
     <widget class="QWidget" name="home_page"/>
     <widget class="QWidget" name="camera_page_7">
@@ -1099,16 +1059,16 @@ QLabel.statLabel{color: rgb(120,120,120); font: 12px &quot;Inter&quot;;}
                </property>
                <layout class="QHBoxLayout" name="horizontalLayout_15">
                 <property name="leftMargin">
-                 <number>5</number>
+                 <number>10</number>
                 </property>
                 <property name="topMargin">
-                 <number>5</number>
+                 <number>10</number>
                 </property>
                 <property name="rightMargin">
-                 <number>5</number>
+                 <number>10</number>
                 </property>
                 <property name="bottomMargin">
-                 <number>5</number>
+                 <number>10</number>
                 </property>
                 <item>
                  <widget class="QLabel" name="aveConfidence">
@@ -1339,23 +1299,6 @@ border-radius: 5px;
     </widget>
     <widget class="QWidget" name="sample_page"/>
     <widget class="QWidget" name="farm_page_7"/>
-    <widget class="QWidget" name="chart_page">
-     <widget class="QWidget" name="verticalLayoutWidget_7">
-      <property name="geometry">
-       <rect>
-        <x>-10</x>
-        <y>0</y>
-        <width>1111</width>
-        <height>731</height>
-       </rect>
-      </property>
-      <layout class="QVBoxLayout" name="verticalLayout_8">
-       <item>
-        <widget class="QWidget" name="webEnginePlaceholder_7" native="true"/>
-       </item>
-      </layout>
-     </widget>
-    </widget>
    </widget>
   </widget>
  </widget>

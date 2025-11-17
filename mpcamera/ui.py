@@ -12,7 +12,7 @@ from PyQt5.QtCore import (
 )
 from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtWidgets import QSizePolicy, QMainWindow, QFileDialog
-from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEnginePage
+# WebEngine removed: QWebEngineView/QWebEnginePage and external browser not used
 import cv2
 import os
 import logging
@@ -100,142 +100,77 @@ class MainWindow(BaseClass):
         except Exception:
             pass
 
-        # Embed QWebEngineView where the placeholder widget is defined in the .ui
+        # Web view was removed per request. Keep a placeholder attribute so
+        # other code that may reference `self.webEngineView` won't crash.
         try:
-            # Small custom page to capture JS console messages for debugging
-            class LoggingWebPage(QWebEnginePage):
-                def javaScriptConsoleMessage(
-                    self, level, message, lineNumber, sourceID
-                ):
-                    try:
-                        print(
-                            f"JS console (level={level}) {sourceID}:{lineNumber} -> {message}"
-                        )
-                    except Exception:
-                        print("JS console:", message)
+            self.webEngineView = None
+        except Exception:
+            pass
 
-            placeholder = getattr(self, "webEnginePlaceholder_7", None)
-            if placeholder is not None:
-                container = placeholder.parent() or self
-                placeholder.deleteLater()
-            else:
-                container = getattr(
-                    self, "chart_page", getattr(self, "centralwidget", self)
+        # --- Navigation: connect sidebar buttons to stackedWidget pages ---
+        # Map known button objectNames to the page widget names defined in the .ui
+        nav_map = {
+            # designer-generated names found in SoilSight.ui
+            "pushButton_4": "farm_page_7",
+            "pushButton_5": "sample_page",
+            "pushButton_3": "camera_page_7",
+            "pushButton_2": "chart_page",
+            # semantic names the project may use
+            "farmNavButton": "farm_page_7",
+            "sampleNavButton": "sample_page",
+            "cameraNavButton": "camera_page_7",
+            "chartNavButton": "chart_page",
+            "homeNavButton": "home_page",
+        }
+
+        def _connect_nav_button(btn_obj, page_widget):
+            try:
+                btn_obj.clicked.connect(
+                    lambda _checked=False, p=page_widget: self.stackedWidget.setCurrentWidget(
+                        p
+                    )
                 )
+            except Exception:
+                # ignore if button has no clicked signal
+                pass
 
-            # create the view and use the logging page
-            self.webEngineView = QWebEngineView(container)
-            self.webEngineView.setObjectName("webEngineView")
-            self.webEngineView.setPage(LoggingWebPage(self.webEngineView))
+        for btn_name, page_name in nav_map.items():
+            btn = getattr(self, btn_name, None)
+            page = getattr(self, page_name, None)
+            if btn is not None and page is not None:
+                _connect_nav_button(btn, page)
 
-            # Place the view inside the container's layout if present, otherwise
-            # size it to the container and install a resize filter so it follows size.
+        # --- Camera streaming support ---
+        # cameraView should be a QLabel on the `camera_page` that will
+        # receive frames from OpenCV. We'll auto-start the camera when the
+        # camera page becomes the current stacked widget page and stop it
+        # when leaving.
+        self._camera_cap = None
+        self._camera_timer = QTimer(self)
+        self._camera_timer.setInterval(30)  # ~33 FPS
+        self._camera_timer.timeout.connect(self._read_camera_frame)
+
+        def _on_stacked_changed(index):
             try:
-                layout = container.layout()
-                if layout is not None:
-                    layout.addWidget(self.webEngineView)
-                else:
-                    # no layout: parent the view and match geometry
-                    self.webEngineView.setParent(container)
-                    try:
-                        self.webEngineView.setGeometry(container.rect())
-                    except Exception:
-                        pass
-
-                # simple load-finished handler to fall back if navigation fails
-                def _on_load_finished(ok: bool):
-                    if not ok:
-                        print("WebEngineView failed to load; loading example.com")
-                        try:
-                            self.webEngineView.setUrl(QUrl("https://example.com"))
-                        except Exception:
-                            pass
-
-                # safe target URL (can be changed to a local asset if available)
-                target_url = QUrl("https://example.com")
-
-                try:
-                    self.webEngineView.loadFinished.connect(_on_load_finished)
-                    self.webEngineView.urlChanged.connect(
-                        lambda u: print(f"WebView: urlChanged {u.toString()}")
-                    )
-                except Exception as e:
-                    print("Failed to connect load signals:", e)
-
-            except Exception as e:
-                print("Failed to place webEngineView in container:", e)
-
-            # finally set the URL to begin loading
-            try:
-                self.webEngineView.setUrl(target_url)
+                current = self.stackedWidget.currentWidget()
+                # Handle possible suffixes like camera_page_7 by checking objectName
+                if current is not None:
+                    name = getattr(current, "objectName", lambda: "")()
+                    # Do not auto-start the camera on page change anymore.
+                    # Camera is controlled by the `controlCamera` button.
+                    if name.startswith("camera_page") or name == "camera_page":
+                        # keep camera state as-is when entering camera page
+                        return
+                # otherwise stop camera
+                self.stop_camera()
             except Exception:
                 pass
-            # --- Navigation: connect sidebar buttons to stackedWidget pages ---
-            # Map known button objectNames to the page widget names defined in the .ui
-            nav_map = {
-                # designer-generated names found in SoilSight.ui
-                "pushButton_4": "farm_page_7",
-                "pushButton_5": "sample_page",
-                "pushButton_3": "camera_page_7",
-                "pushButton_2": "chart_page",
-                # semantic names the project may use
-                "farmNavButton": "farm_page_7",
-                "sampleNavButton": "sample_page",
-                "cameraNavButton": "camera_page_7",
-                "chartNavButton": "chart_page",
-                "homeNavButton": "home_page",
-            }
 
-            def _connect_nav_button(btn_obj, page_widget):
-                try:
-                    btn_obj.clicked.connect(
-                        lambda _checked=False, p=page_widget: self.stackedWidget.setCurrentWidget(
-                            p
-                        )
-                    )
-                except Exception:
-                    # ignore if button has no clicked signal
-                    pass
-
-            for btn_name, page_name in nav_map.items():
-                btn = getattr(self, btn_name, None)
-                page = getattr(self, page_name, None)
-                if btn is not None and page is not None:
-                    _connect_nav_button(btn, page)
-            # --- Camera streaming support ---
-            # cameraView should be a QLabel on the `camera_page` that will
-            # receive frames from OpenCV. We'll auto-start the camera when the
-            # camera page becomes the current stacked widget page and stop it
-            # when leaving.
-            self._camera_cap = None
-            self._camera_timer = QTimer(self)
-            self._camera_timer.setInterval(30)  # ~33 FPS
-            self._camera_timer.timeout.connect(self._read_camera_frame)
-
-            def _on_stacked_changed(index):
-                try:
-                    current = self.stackedWidget.currentWidget()
-                    # Handle possible suffixes like camera_page_7 by checking objectName
-                    if current is not None:
-                        name = getattr(current, "objectName", lambda: "")()
-                        # Do not auto-start the camera on page change anymore.
-                        # Camera is controlled by the `controlCamera` button.
-                        if name.startswith("camera_page") or name == "camera_page":
-                            # keep camera state as-is when entering camera page
-                            return
-                    # otherwise stop camera
-                    self.stop_camera()
-                except Exception:
-                    pass
-
-            try:
-                self.stackedWidget.currentChanged.connect(_on_stacked_changed)
-            except Exception:
-                # If stackedWidget isn't present for some reason, don't crash
-                pass
-        except Exception as e:
-            # Keep UI functional even if WebEngine isn't available; print error.
-            print("Failed to create QWebEngineView:", e)
+        try:
+            self.stackedWidget.currentChanged.connect(_on_stacked_changed)
+        except Exception:
+            # If stackedWidget isn't present for some reason, don't crash
+            pass
 
         # After the UI is created and event loop starts, populate the farms
         # combo box from Directus. Use a short singleShot to avoid running
@@ -696,6 +631,67 @@ class MainWindow(BaseClass):
                 tbl = getattr(self, "inferenceTable", None)
                 if tbl is not None:
                     tbl.setRowCount(0)
+            except Exception:
+                pass
+            # reset stat labels to zero/defaults
+            try:
+                lbl = self._find_widget("totalCount") or getattr(
+                    self, "totalCount", None
+                )
+                if lbl is not None:
+                    lbl.setText("0 MPs")
+            except Exception:
+                pass
+            try:
+                lbl = self._find_widget("fragmentCount") or getattr(
+                    self, "fragmentCount", None
+                )
+                if lbl is not None:
+                    lbl.setText("0 fragments")
+            except Exception:
+                pass
+            try:
+                lbl = self._find_widget("pelletCount") or getattr(
+                    self, "pelletCount", None
+                )
+                if lbl is not None:
+                    lbl.setText("0 pellets")
+            except Exception:
+                pass
+            try:
+                lbl = self._find_widget("filmCount") or getattr(self, "filmCount", None)
+                if lbl is not None:
+                    lbl.setText("0 films")
+            except Exception:
+                pass
+            try:
+                lbl = self._find_widget("fiberCount") or getattr(
+                    self, "fiberCount", None
+                )
+                if lbl is not None:
+                    lbl.setText("0 fibers")
+            except Exception:
+                pass
+            try:
+                lbl = self._find_widget("sheetCount") or getattr(
+                    self, "sheetCount", None
+                )
+                if lbl is not None:
+                    lbl.setText("0 sheets")
+            except Exception:
+                pass
+            try:
+                lbl = self._find_widget("foamCount") or getattr(self, "foamCount", None)
+                if lbl is not None:
+                    lbl.setText("0 foams")
+            except Exception:
+                pass
+            try:
+                lbl = self._find_widget("aveConfidence") or getattr(
+                    self, "aveConfidence", None
+                )
+                if lbl is not None:
+                    lbl.setText("~0% Conf.")
             except Exception:
                 pass
             # update save button state
@@ -1541,6 +1537,124 @@ class MainWindow(BaseClass):
                 rows = parse_prediction_to_rows(result)
             except Exception:
                 rows = []
+
+            # Update summary stat labels: total MPs, fragments, pellets, etc.
+            try:
+                total = len(rows)
+                # count by simple keyword matching on class name (case-insensitive)
+                counts = {
+                    "fragment": 0,
+                    "pellet": 0,
+                    "film": 0,
+                    "fiber": 0,
+                    "sheet": 0,
+                    "foam": 0,
+                }
+                conf_vals = []
+                for _id, cls_name, conf_str in rows:
+                    try:
+                        lname = str(cls_name).lower() if cls_name is not None else ""
+                        for k in counts.keys():
+                            if k in lname:
+                                counts[k] += 1
+                        # parse confidence into 0..1 float
+                        try:
+                            s = str(conf_str).strip()
+                            if s.endswith("%"):
+                                s = s[:-1]
+                            num = float(s)
+                            if num > 1:
+                                # assume percent like '82' -> convert
+                                num = num / 100.0
+                            conf_vals.append(num)
+                        except Exception:
+                            pass
+                    except Exception:
+                        continue
+
+                # Compute average confidence
+                avg_conf = None
+                try:
+                    if conf_vals:
+                        avg_conf = sum(conf_vals) / len(conf_vals)
+                except Exception:
+                    avg_conf = None
+
+                # Update label widgets if present
+                try:
+                    lbl = self._find_widget("totalCount") or getattr(
+                        self, "totalCount", None
+                    )
+                    if lbl is not None:
+                        lbl.setText(f"{total} MPs")
+                except Exception:
+                    pass
+                try:
+                    lbl = self._find_widget("fragmentCount") or getattr(
+                        self, "fragmentCount", None
+                    )
+                    if lbl is not None:
+                        lbl.setText(f"{counts.get('fragment',0)} fragments")
+                except Exception:
+                    pass
+                try:
+                    lbl = self._find_widget("pelletCount") or getattr(
+                        self, "pelletCount", None
+                    )
+                    if lbl is not None:
+                        lbl.setText(f"{counts.get('pellet',0)} pellets")
+                except Exception:
+                    pass
+                try:
+                    lbl = self._find_widget("filmCount") or getattr(
+                        self, "filmCount", None
+                    )
+                    if lbl is not None:
+                        lbl.setText(f"{counts.get('film',0)} films")
+                except Exception:
+                    pass
+                try:
+                    lbl = self._find_widget("fiberCount") or getattr(
+                        self, "fiberCount", None
+                    )
+                    if lbl is not None:
+                        lbl.setText(f"{counts.get('fiber',0)} fibers")
+                except Exception:
+                    pass
+                try:
+                    lbl = self._find_widget("sheetCount") or getattr(
+                        self, "sheetCount", None
+                    )
+                    if lbl is not None:
+                        lbl.setText(f"{counts.get('sheet',0)} sheets")
+                except Exception:
+                    pass
+                try:
+                    lbl = self._find_widget("foamCount") or getattr(
+                        self, "foamCount", None
+                    )
+                    if lbl is not None:
+                        lbl.setText(f"{counts.get('foam',0)} foams")
+                except Exception:
+                    pass
+
+                try:
+                    lbl = self._find_widget("aveConfidence") or getattr(
+                        self, "aveConfidence", None
+                    )
+                    if lbl is not None:
+                        if avg_conf is None:
+                            lbl.setText("~0% Conf.")
+                        else:
+                            pct = round(float(avg_conf) * 100.0, 1)
+                            # remove .0 when integer
+                            if pct.is_integer():
+                                pct = int(pct)
+                            lbl.setText(f"~{pct}% Conf.")
+                except Exception:
+                    pass
+            except Exception:
+                pass
 
             from PyQt5.QtWidgets import QTableWidgetItem
             from PyQt5.QtCore import Qt as _Qt
