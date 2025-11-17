@@ -12,6 +12,7 @@ from PyQt5.QtCore import (
 )
 from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtWidgets import QSizePolicy, QMainWindow, QFileDialog
+
 # WebEngine removed: QWebEngineView/QWebEnginePage and external browser not used
 import cv2
 import os
