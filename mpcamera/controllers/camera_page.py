@@ -10,23 +10,23 @@ try:
 except Exception:
     RoboflowClient = None
 
-from mpcamera.services.camera_utils import (
+from mpcamera.utils.camera_utils import (
     append_log,
     color_for_label,
     extract_directus_items,
     get_site_id_from_sample,
 )
-from mpcamera.services.prediction_utils import (
+from mpcamera.utils.prediction_utils import (
     find_predictions,
     extract_points_from_prediction,
 )
-from mpcamera.services.overlays import (
+from mpcamera.ui.overlays import (
     HoverEllipse,
     HoverPolygon,
     render_predictions_on_scene,
     show_debug_overlays,
 )
-from mpcamera.services.overlays import ensure_overlay_for_view
+from mpcamera.ui.overlays import ensure_overlay_for_view
 
 
 # Directus and site helpers are provided by `camera_utils` service

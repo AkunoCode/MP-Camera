@@ -1,6 +1,6 @@
 from PyQt6 import QtWidgets, QtCore, QtGui
-from mpcamera.services.camera_utils import append_log, color_for_label
-from mpcamera.services.prediction_utils import (
+from mpcamera.utils.camera_utils import append_log, color_for_label
+from mpcamera.utils.prediction_utils import (
     find_predictions,
     extract_points_from_prediction,
 )
