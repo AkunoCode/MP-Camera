@@ -3,7 +3,7 @@
  <class>Form</class>
  <widget class="QWidget" name="Form">
   <property name="windowModality">
-   <enum>Qt::WindowModality::NonModal</enum>
+   <enum>Qt::NonModal</enum>
   </property>
   <property name="geometry">
    <rect>
@@ -48,6 +48,90 @@ background-color:white;
 border-radius:5px;
 border: 1px solid rgb(134, 134, 134);
 }
+
+/*-----------------COMBO BOX----------------------------*/
+
+
+QComboBox {
+    background-color: #ffffff;
+    border: 1px solid #d0d0d0;
+    border-radius: 6px;
+    padding: 6px 30px 6px 10px;
+    font-size: 13px;
+    color: #333333;
+}
+
+QComboBox:hover {
+    border: 1px solid #a0a0a0;
+}
+
+QComboBox:focus {
+    border: 1px solid #0078d4;
+}
+
+QComboBox::drop-down {
+    border: none;
+    width: 25px;
+}
+
+/* Use a ▼ Unicode symbol instead of a PNG */
+QComboBox::down-arrow {
+    color: #555555;
+    font-size: 12px;
+    content: &quot;\25BC&quot;;  /* ▼ */
+    margin-right: 8px;
+}
+
+
+/*-----------------SPIN BOX-------------------------------*/
+QDoubleSpinBox {
+    background-color: #ffffff;
+    border: 1px solid #d0d0d0;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 13px;
+    color: #333333;
+}
+
+QDoubleSpinBox:hover {
+    border: 1px solid #a0a0a0;
+}
+
+QDoubleSpinBox:focus {
+    border: 1px solid #0078d4;
+}
+
+/* Remove the ugly default arrows styling */
+QDoubleSpinBox::up-button, 
+QDoubleSpinBox::down-button {
+    background: transparent;
+    border: none;
+    width: 20px;
+}
+
+/* Modern minimal up/down arrows */
+QDoubleSpinBox::up-arrow {
+    image: url(:/qt-project.org/styles/commonstyle/images/arrow-up-16.png);
+    width: 10px;
+    height: 10px;
+}
+
+QDoubleSpinBox::down-arrow {
+    image: url(:/qt-project.org/styles/commonstyle/images/arrow-down-16.png);
+    width: 10px;
+    height: 10px;
+}
+
+/* Dropdown-style popup for editing (if applicable) */
+QDoubleSpinBox QAbstractItemView {
+    background-color: #ffffff;
+    border: 1px solid #cfcfcf;
+    border-radius: 6px;
+    padding: 4px;
+    selection-background-color: #e6f2ff;
+}
+
+
 </string>
   </property>
   <widget class="QWidget" name="widget" native="true">
@@ -168,11 +252,17 @@ color:gray;
                  <height>40</height>
                 </size>
                </property>
+               <property name="cursor">
+                <cursorShape>PointingHandCursor</cursorShape>
+               </property>
                <property name="styleSheet">
                 <string notr="true">QComboBox{
 background-color:white;
 color:black;
 }</string>
+               </property>
+               <property name="frame">
+                <bool>true</bool>
                </property>
               </widget>
              </item>
@@ -214,6 +304,9 @@ color:gray;
 background-color:white;
 color:black;
 }</string>
+               </property>
+               <property name="frame">
+                <bool>true</bool>
                </property>
               </widget>
              </item>
@@ -260,6 +353,9 @@ background-color:white;
 color:black;
 }</string>
                </property>
+               <property name="frame">
+                <bool>true</bool>
+               </property>
               </widget>
              </item>
             </layout>
@@ -300,6 +396,9 @@ color:gray;
 background-color:white;
 color:black;
 }</string>
+               </property>
+               <property name="frame">
+                <bool>true</bool>
                </property>
               </widget>
              </item>
@@ -342,6 +441,12 @@ background-color:white;
 color:black;
 }</string>
                </property>
+               <property name="wrapping">
+                <bool>false</bool>
+               </property>
+               <property name="frame">
+                <bool>true</bool>
+               </property>
               </widget>
              </item>
             </layout>
@@ -368,7 +473,7 @@ background-color:black;
 }</string>
            </property>
            <property name="sizeAdjustPolicy">
-            <enum>QAbstractScrollArea::SizeAdjustPolicy::AdjustToContents</enum>
+            <enum>QAbstractScrollArea::AdjustIgnored</enum>
            </property>
           </widget>
          </item>
@@ -527,10 +632,7 @@ background-color:none;
               </size>
              </property>
              <property name="frameShape">
-              <enum>QFrame::Shape::StyledPanel</enum>
-             </property>
-             <property name="frameShadow">
-              <enum>QFrame::Shadow::Raised</enum>
+              <enum>QFrame::NoFrame</enum>
              </property>
              <property name="designClass" stdset="0">
               <string>inferenceCard</string>
@@ -569,7 +671,7 @@ background-color:none;
                   <string>Total Number</string>
                  </property>
                  <property name="alignment">
-                  <set>Qt::AlignmentFlag::AlignCenter</set>
+                  <set>Qt::AlignCenter</set>
                  </property>
                 </widget>
                </item>
@@ -592,7 +694,7 @@ background-color:none;
                   <string>000</string>
                  </property>
                  <property name="alignment">
-                  <set>Qt::AlignmentFlag::AlignCenter</set>
+                  <set>Qt::AlignCenter</set>
                  </property>
                 </widget>
                </item>
@@ -615,10 +717,7 @@ background-color:none;
               </size>
              </property>
              <property name="frameShape">
-              <enum>QFrame::Shape::StyledPanel</enum>
-             </property>
-             <property name="frameShadow">
-              <enum>QFrame::Shadow::Raised</enum>
+              <enum>QFrame::NoFrame</enum>
              </property>
              <property name="designClass" stdset="0">
               <string>inferenceCard</string>
@@ -657,7 +756,7 @@ background-color:none;
                   <string>Average Confidence</string>
                  </property>
                  <property name="alignment">
-                  <set>Qt::AlignmentFlag::AlignCenter</set>
+                  <set>Qt::AlignCenter</set>
                  </property>
                 </widget>
                </item>
@@ -680,7 +779,7 @@ background-color:none;
                   <string>000</string>
                  </property>
                  <property name="alignment">
-                  <set>Qt::AlignmentFlag::AlignCenter</set>
+                  <set>Qt::AlignCenter</set>
                  </property>
                 </widget>
                </item>
@@ -707,10 +806,7 @@ background-color:none;
               </size>
              </property>
              <property name="frameShape">
-              <enum>QFrame::Shape::StyledPanel</enum>
-             </property>
-             <property name="frameShadow">
-              <enum>QFrame::Shadow::Raised</enum>
+              <enum>QFrame::NoFrame</enum>
              </property>
              <property name="designClass" stdset="0">
               <string>inferenceCard</string>
@@ -749,7 +845,7 @@ background-color:none;
                   <string>Fragments</string>
                  </property>
                  <property name="alignment">
-                  <set>Qt::AlignmentFlag::AlignCenter</set>
+                  <set>Qt::AlignCenter</set>
                  </property>
                 </widget>
                </item>
@@ -772,7 +868,7 @@ background-color:none;
                   <string>000</string>
                  </property>
                  <property name="alignment">
-                  <set>Qt::AlignmentFlag::AlignCenter</set>
+                  <set>Qt::AlignCenter</set>
                  </property>
                 </widget>
                </item>
@@ -795,10 +891,7 @@ background-color:none;
               </size>
              </property>
              <property name="frameShape">
-              <enum>QFrame::Shape::StyledPanel</enum>
-             </property>
-             <property name="frameShadow">
-              <enum>QFrame::Shadow::Raised</enum>
+              <enum>QFrame::NoFrame</enum>
              </property>
              <property name="designClass" stdset="0">
               <string>inferenceCard</string>
@@ -837,7 +930,7 @@ background-color:none;
                   <string>Foams</string>
                  </property>
                  <property name="alignment">
-                  <set>Qt::AlignmentFlag::AlignCenter</set>
+                  <set>Qt::AlignCenter</set>
                  </property>
                 </widget>
                </item>
@@ -860,7 +953,7 @@ background-color:none;
                   <string>000</string>
                  </property>
                  <property name="alignment">
-                  <set>Qt::AlignmentFlag::AlignCenter</set>
+                  <set>Qt::AlignCenter</set>
                  </property>
                 </widget>
                </item>
@@ -887,10 +980,7 @@ background-color:none;
               </size>
              </property>
              <property name="frameShape">
-              <enum>QFrame::Shape::StyledPanel</enum>
-             </property>
-             <property name="frameShadow">
-              <enum>QFrame::Shadow::Raised</enum>
+              <enum>QFrame::NoFrame</enum>
              </property>
              <property name="designClass" stdset="0">
               <string>inferenceCard</string>
@@ -929,7 +1019,7 @@ background-color:none;
                   <string>Fibers</string>
                  </property>
                  <property name="alignment">
-                  <set>Qt::AlignmentFlag::AlignCenter</set>
+                  <set>Qt::AlignCenter</set>
                  </property>
                 </widget>
                </item>
@@ -952,7 +1042,7 @@ background-color:none;
                   <string>000</string>
                  </property>
                  <property name="alignment">
-                  <set>Qt::AlignmentFlag::AlignCenter</set>
+                  <set>Qt::AlignCenter</set>
                  </property>
                 </widget>
                </item>
@@ -975,10 +1065,7 @@ background-color:none;
               </size>
              </property>
              <property name="frameShape">
-              <enum>QFrame::Shape::StyledPanel</enum>
-             </property>
-             <property name="frameShadow">
-              <enum>QFrame::Shadow::Raised</enum>
+              <enum>QFrame::NoFrame</enum>
              </property>
              <property name="designClass" stdset="0">
               <string>inferenceCard</string>
@@ -1017,7 +1104,7 @@ background-color:none;
                   <string>Films</string>
                  </property>
                  <property name="alignment">
-                  <set>Qt::AlignmentFlag::AlignCenter</set>
+                  <set>Qt::AlignCenter</set>
                  </property>
                 </widget>
                </item>
@@ -1040,7 +1127,7 @@ background-color:none;
                   <string>000</string>
                  </property>
                  <property name="alignment">
-                  <set>Qt::AlignmentFlag::AlignCenter</set>
+                  <set>Qt::AlignCenter</set>
                  </property>
                 </widget>
                </item>
@@ -1067,10 +1154,7 @@ background-color:none;
               </size>
              </property>
              <property name="frameShape">
-              <enum>QFrame::Shape::StyledPanel</enum>
-             </property>
-             <property name="frameShadow">
-              <enum>QFrame::Shadow::Raised</enum>
+              <enum>QFrame::NoFrame</enum>
              </property>
              <property name="designClass" stdset="0">
               <string>inferenceCard</string>
@@ -1109,7 +1193,7 @@ background-color:none;
                   <string>Pellet/Beads</string>
                  </property>
                  <property name="alignment">
-                  <set>Qt::AlignmentFlag::AlignCenter</set>
+                  <set>Qt::AlignCenter</set>
                  </property>
                 </widget>
                </item>
@@ -1132,7 +1216,7 @@ background-color:none;
                   <string>000</string>
                  </property>
                  <property name="alignment">
-                  <set>Qt::AlignmentFlag::AlignCenter</set>
+                  <set>Qt::AlignCenter</set>
                  </property>
                 </widget>
                </item>
@@ -1155,10 +1239,7 @@ background-color:none;
               </size>
              </property>
              <property name="frameShape">
-              <enum>QFrame::Shape::StyledPanel</enum>
-             </property>
-             <property name="frameShadow">
-              <enum>QFrame::Shadow::Raised</enum>
+              <enum>QFrame::NoFrame</enum>
              </property>
              <property name="designClass" stdset="0">
               <string>inferenceCard</string>
@@ -1197,7 +1278,7 @@ background-color:none;
                   <string>Sheets</string>
                  </property>
                  <property name="alignment">
-                  <set>Qt::AlignmentFlag::AlignCenter</set>
+                  <set>Qt::AlignCenter</set>
                  </property>
                 </widget>
                </item>
@@ -1220,7 +1301,7 @@ background-color:none;
                   <string>000</string>
                  </property>
                  <property name="alignment">
-                  <set>Qt::AlignmentFlag::AlignCenter</set>
+                  <set>Qt::AlignCenter</set>
                  </property>
                 </widget>
                </item>
