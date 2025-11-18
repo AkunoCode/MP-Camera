@@ -1,0 +1,431 @@
+from PyQt6 import QtWidgets, QtCore, QtGui
+from mpcamera.services.camera_utils import append_log, color_for_label
+from mpcamera.services.prediction_utils import (
+    find_predictions,
+    extract_points_from_prediction,
+)
+import json
+
+
+class HoverEllipse(QtWidgets.QGraphicsEllipseItem):
+    def __init__(
+        self, x, y, w, h, text="", parent=None, color=QtGui.QColor(255, 0, 0, 140)
+    ):
+        super().__init__(x, y, w, h, parent)
+        self._label_text = text or ""
+        self.setAcceptHoverEvents(True)
+        self._text_item = None
+        self._bg_item = None
+        self._color = color
+
+    def hoverEnterEvent(self, event):
+        try:
+            if self._text_item is None:
+                txt = QtWidgets.QGraphicsSimpleTextItem(
+                    str(self._label_text), parent=self
+                )
+                txt.setBrush(QtGui.QBrush(QtGui.QColor(255, 255, 255)))
+                br = txt.boundingRect()
+                pad = 4
+                rect = QtCore.QRectF(
+                    br.x() - pad,
+                    br.y() - pad,
+                    br.width() + pad * 2,
+                    br.height() + pad * 2,
+                )
+                bg = QtWidgets.QGraphicsRectItem(rect, parent=self)
+                bg.setBrush(QtGui.QBrush(QtGui.QColor(0, 0, 0, 160)))
+                bg.setZValue(self.zValue() + 1)
+                txt.setZValue(self.zValue() + 2)
+                r = self.rect()
+                txt.setPos(r.width() + 6, -(br.height() / 2))
+                bg.setPos(txt.pos())
+                self._text_item = txt
+                self._bg_item = bg
+            else:
+                try:
+                    self._text_item.show()
+                except Exception:
+                    pass
+                try:
+                    if self._bg_item is not None:
+                        self._bg_item.show()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        super().hoverEnterEvent(event)
+
+    def hoverLeaveEvent(self, event):
+        try:
+            if self._text_item is not None:
+                self._text_item.hide()
+            if self._bg_item is not None:
+                self._bg_item.hide()
+        except Exception:
+            pass
+        super().hoverLeaveEvent(event)
+
+    def paint(self, painter, option, widget=None):
+        try:
+            pen = QtGui.QPen(self._color)
+            pen.setWidth(2)
+            painter.setPen(pen)
+            brush = QtGui.QBrush(self._color)
+            painter.setBrush(brush)
+        except Exception:
+            pass
+        super().paint(painter, option, widget)
+
+
+class HoverPolygon(QtWidgets.QGraphicsPolygonItem):
+    def __init__(
+        self,
+        polygon: QtGui.QPolygonF,
+        text="",
+        parent=None,
+        color=QtGui.QColor(255, 0, 0, 140),
+    ):
+        super().__init__(polygon, parent)
+        self._label_text = text or ""
+        self.setAcceptHoverEvents(True)
+        self._text_item = None
+        self._bg_item = None
+        self._color = color
+
+    def hoverEnterEvent(self, event):
+        try:
+            if self._text_item is None:
+                txt = QtWidgets.QGraphicsSimpleTextItem(
+                    str(self._label_text), parent=self
+                )
+                txt.setBrush(QtGui.QBrush(QtGui.QColor(255, 255, 255)))
+                br = txt.boundingRect()
+                pad = 4
+                rect = QtCore.QRectF(
+                    br.x() - pad,
+                    br.y() - pad,
+                    br.width() + pad * 2,
+                    br.height() + pad * 2,
+                )
+                bg = QtWidgets.QGraphicsRectItem(rect, parent=self)
+                bg.setBrush(QtGui.QBrush(QtGui.QColor(0, 0, 0, 160)))
+                bg.setZValue(self.zValue() + 1)
+                txt.setZValue(self.zValue() + 2)
+                r = self.polygon().boundingRect()
+                txt.setPos(r.width() + 6, -(br.height() / 2))
+                bg.setPos(txt.pos())
+                self._text_item = txt
+                self._bg_item = bg
+            else:
+                try:
+                    self._text_item.show()
+                except Exception:
+                    pass
+                try:
+                    if self._bg_item is not None:
+                        self._bg_item.show()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        super().hoverEnterEvent(event)
+
+    def hoverLeaveEvent(self, event):
+        try:
+            if self._text_item is not None:
+                self._text_item.hide()
+            if self._bg_item is not None:
+                self._bg_item.hide()
+        except Exception:
+            pass
+        super().hoverLeaveEvent(event)
+
+    def paint(self, painter, option, widget=None):
+        try:
+            pen = QtGui.QPen(self._color)
+            pen.setWidth(2)
+            painter.setPen(pen)
+            brush = QtGui.QBrush(self._color)
+            painter.setBrush(brush)
+        except Exception:
+            pass
+        super().paint(painter, option, widget)
+
+
+def show_debug_overlays(
+    scene: QtWidgets.QGraphicsScene, pix_item: QtWidgets.QGraphicsPixmapItem
+):
+    try:
+        if scene is None or pix_item is None:
+            return
+        pix = pix_item.pixmap()
+        img_w = pix.width()
+        img_h = pix.height()
+        pts = [
+            (img_w * 0.5, img_h * 0.5, "debug_center"),
+            (img_w * 0.15, img_h * 0.2, "debug_tl"),
+            (img_w * 0.85, img_h * 0.8, "debug_br"),
+        ]
+        for cx_px, cy_px, lab in pts:
+            try:
+                r = max(6, int(min(img_w, img_h) * 0.02))
+                label_text = f"{lab} 1.00"
+                color = color_for_label(label_text)
+                he = HoverEllipse(
+                    cx_px - r, cy_px - r, r * 2, r * 2, text=label_text, color=color
+                )
+                he.setZValue(20)
+                try:
+                    he.setData(0, "inference_overlay")
+                except Exception:
+                    pass
+                scene.addItem(he)
+                try:
+                    append_log(
+                        f"ADDED DEBUG OVERLAY: {label_text} at ({cx_px:.1f},{cy_px:.1f})"
+                    )
+                except Exception:
+                    pass
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def render_predictions_on_scene(scene: QtWidgets.QGraphicsScene, result):
+    try:
+        if scene is None:
+            return
+        # find the pixmap item
+        pix_item = None
+        for it in scene.items():
+            try:
+                from PyQt6 import QtWidgets as _qtw
+
+                if isinstance(it, _qtw.QGraphicsPixmapItem):
+                    pix_item = it
+                    break
+            except Exception:
+                pass
+        if pix_item is None:
+            return
+        pix = pix_item.pixmap()
+        img_w = pix.width()
+        img_h = pix.height()
+
+        # remove previous inference overlays
+        try:
+            for it in list(scene.items()):
+                try:
+                    if it.data(0) == "inference_overlay":
+                        scene.removeItem(it)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        preds = find_predictions(result)
+        # flatten wrappers similar to previous controller logic
+        flat_preds = []
+        try:
+            for item in preds:
+                found = False
+                if isinstance(item, dict):
+                    for k in ("predictions", "outputs", "results", "objects"):
+                        v = item.get(k)
+                        if isinstance(v, list) and v and isinstance(v[0], dict):
+                            flat_preds.extend(v)
+                            found = True
+                            break
+                        if isinstance(v, dict):
+                            for kk in (
+                                "predictions",
+                                "outputs",
+                                "results",
+                                "objects",
+                                "data",
+                            ):
+                                vv = v.get(kk)
+                                if (
+                                    isinstance(vv, list)
+                                    and vv
+                                    and isinstance(vv[0], dict)
+                                ):
+                                    flat_preds.extend(vv)
+                                    found = True
+                                    break
+                            if found:
+                                break
+                if not found:
+                    flat_preds.append(item)
+        except Exception:
+            flat_preds = preds
+
+        preds = flat_preds
+        try:
+            append_log(f"FOUND PREDICTIONS: {len(preds)}")
+        except Exception:
+            pass
+
+        for p in preds:
+            try:
+                try:
+                    append_log("PRED RAW: " + json.dumps(p, default=str))
+                except Exception:
+                    try:
+                        append_log("PRED RAW: " + str(p))
+                    except Exception:
+                        pass
+
+                label = (
+                    p.get("class")
+                    or p.get("label")
+                    or p.get("predicted_class")
+                    or p.get("name")
+                    or str(p.get("id", ""))
+                )
+                score = (
+                    p.get("confidence") or p.get("score") or p.get("confidence_score")
+                )
+
+                cx = None
+                cy = None
+                if "x" in p and "y" in p:
+                    cx = p.get("x")
+                    cy = p.get("y")
+                elif "bbox" in p and isinstance(p.get("bbox"), dict):
+                    bb = p.get("bbox")
+                    bx = bb.get("x")
+                    by = bb.get("y")
+                    bw = bb.get("w") or bb.get("width") or bb.get("w", 0)
+                    bh = bb.get("h") or bb.get("height") or bb.get("h", 0)
+                    if bx is not None and by is not None:
+                        try:
+                            bx_f = float(bx)
+                            by_f = float(by)
+                            bw_f = float(bw) if bw is not None else 0
+                            bh_f = float(bh) if bh is not None else 0
+                            cx = bx_f + bw_f / 2.0
+                            cy = by_f + bh_f / 2.0
+                        except Exception:
+                            cx = None
+                            cy = None
+
+                pts_found = []
+                try:
+                    pts_found = extract_points_from_prediction(p)
+                    if not pts_found and isinstance(p, dict):
+                        for k in ("predictions", "outputs", "results", "objects"):
+                            v = p.get(k)
+                            if isinstance(v, list) and v:
+                                try:
+                                    pts_found = (
+                                        extract_points_from_prediction(v[0])
+                                        or pts_found
+                                    )
+                                except Exception:
+                                    pass
+                            if pts_found:
+                                break
+                except Exception:
+                    pts_found = []
+
+                if pts_found:
+                    try:
+                        is_norm = all(
+                            0.0 <= xx <= 1.0 and 0.0 <= yy <= 1.0
+                            for xx, yy in pts_found
+                        )
+                        if is_norm:
+                            coords_px = [
+                                (xx * img_w, yy * img_h) for xx, yy in pts_found
+                            ]
+                        else:
+                            coords_px = pts_found
+                        poly = QtGui.QPolygonF()
+                        for xx, yy in coords_px:
+                            poly.append(QtCore.QPointF(xx, yy))
+                        label_text = str(label) if label is not None else ""
+                        if score is not None:
+                            try:
+                                sc = float(score)
+                                label_text = f"{label_text} {sc:.2f}"
+                            except Exception:
+                                label_text = f"{label_text} {score}"
+                        color = color_for_label(label_text)
+                        hp = HoverPolygon(poly, text=label_text, color=color)
+                        hp.setZValue(20)
+                        try:
+                            hp.setData(0, "inference_overlay")
+                        except Exception:
+                            pass
+                        scene.addItem(hp)
+                        try:
+                            append_log(
+                                "ADDED POLYGON: "
+                                + json.dumps(
+                                    {"label": label_text, "points": coords_px},
+                                    default=str,
+                                )
+                            )
+                        except Exception:
+                            pass
+                        continue
+                    except Exception:
+                        pass
+
+                if cx is None or cy is None:
+                    try:
+                        keys = list(p.keys()) if isinstance(p, dict) else str(type(p))
+                    except Exception:
+                        keys = "<unreadable>"
+                    try:
+                        append_log(
+                            f"SKIPPED PRED: keys={keys} raw={json.dumps(p, default=str)[:800]}"
+                        )
+                    except Exception:
+                        pass
+                    continue
+
+                try:
+                    cx_f = float(cx)
+                    cy_f = float(cy)
+                except Exception:
+                    continue
+                if 0 <= cx_f <= 1 and 0 <= cy_f <= 1:
+                    cx_px = cx_f * img_w
+                    cy_px = cy_f * img_h
+                else:
+                    cx_px = cx_f
+                    cy_px = cy_f
+
+                r = max(6, int(min(img_w, img_h) * 0.02))
+                label_text = str(label) if label is not None else ""
+                if score is not None:
+                    try:
+                        sc = float(score)
+                        label_text = f"{label_text} {sc:.2f}"
+                    except Exception:
+                        label_text = f"{label_text} {score}"
+
+                color = color_for_label(label_text)
+                he = HoverEllipse(
+                    cx_px - r, cy_px - r, r * 2, r * 2, text=label_text, color=color
+                )
+                he.setZValue(20)
+                try:
+                    he.setData(0, "inference_overlay")
+                except Exception:
+                    pass
+                scene.addItem(he)
+                try:
+                    append_log(
+                        f"ADDED OVERLAY: {label_text} at ({cx_px:.1f},{cy_px:.1f})"
+                    )
+                except Exception:
+                    pass
+            except Exception:
+                pass
+    except Exception:
+        pass
