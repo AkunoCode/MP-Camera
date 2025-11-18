@@ -4,7 +4,7 @@ import os
 import json
 from threading import Thread
 try:
-    from mpcamera.directus.directus import DirectusClient
+    from mpcamera.services.directus import DirectusClient
 except Exception:
     DirectusClient = None
 
