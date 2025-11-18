@@ -10,6 +10,12 @@ python-dotenv>=0.21.0
 ## Image utilities
 opencv-python>=4.7.0
 
+# Color naming / perceptual matching
+# Used by mpcamera.utils.color_utils.get_color_name (KMeans + delta-E matching)
+scikit-learn>=1.3.0
+webcolors>=1.12
+colormath>=3.0
+
 ## Inference SDK (optional)
 # The official SDK (import name `inference_sdk`, pip package `inference-sdk`) currently
 # has wheels that target Python <=3.11 / <3.13 for many releases. If you run the

@@ -4,6 +4,8 @@ import json
 import pathlib
 import os
 import traceback
+import numpy as np
+import cv2
 
 try:
     from mpcamera.services.roboflow import RoboflowClient
@@ -28,6 +30,7 @@ from mpcamera.ui.overlays import (
 )
 from mpcamera.ui.overlays import ensure_overlay_for_view
 from mpcamera.utils.inference_utils import parse_result_to_preds, compute_aggregates
+from mpcamera.utils.color_utils import get_color_name
 
 
 # Directus and site helpers are provided by `camera_utils` service
@@ -372,6 +375,140 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
                                             QtWidgets.QTableWidget, "inferenceTable"
                                         )
                                         if inf_table is not None:
+                                            # try to obtain the image numpy array from the scene's pixmap
+                                            img_np = None
+                                            try:
+
+                                                def _qimage_to_numpy(
+                                                    qimg: QtGui.QImage,
+                                                ):
+                                                    # convert to a known RGB or RGBA format
+                                                    fmt = qimg.format()
+                                                    # prefer RGB888 or RGBA8888
+                                                    if (
+                                                        fmt
+                                                        != QtGui.QImage.Format.Format_RGB888
+                                                        and fmt
+                                                        != QtGui.QImage.Format.Format_RGBA8888
+                                                    ):
+                                                        try:
+                                                            qimg = qimg.convertToFormat(
+                                                                QtGui.QImage.Format.Format_RGB888
+                                                            )
+                                                        except Exception:
+                                                            try:
+                                                                qimg = qimg.convertToFormat(
+                                                                    QtGui.QImage.Format.Format_RGBA8888
+                                                                )
+                                                            except Exception:
+                                                                pass
+
+                                                    w = qimg.width()
+                                                    h = qimg.height()
+                                                    channels = 3
+                                                    fmt = qimg.format()
+                                                    if (
+                                                        fmt
+                                                        == QtGui.QImage.Format.Format_RGBA8888
+                                                    ):
+                                                        channels = 4
+
+                                                    ptr = qimg.bits()
+                                                    ptr.setsize(qimg.byteCount())
+                                                    arr = np.frombuffer(
+                                                        ptr, dtype=np.uint8
+                                                    )
+                                                    # account for possible scanline padding
+                                                    bytes_per_line = qimg.bytesPerLine()
+                                                    if bytes_per_line == w * channels:
+                                                        arr = arr.reshape(
+                                                            (h, w, channels)
+                                                        )
+                                                    else:
+                                                        # reshape to (h, bytes_per_line) then slice
+                                                        arr = arr.reshape(
+                                                            (h, bytes_per_line)
+                                                        )
+                                                        arr = arr[:, : w * channels]
+                                                        arr = arr.reshape(
+                                                            (h, w, channels)
+                                                        )
+
+                                                    # if RGBA, drop alpha
+                                                    if channels == 4:
+                                                        arr = arr[:, :, :3]
+
+                                                    # QImage.Format_RGB888 is already RGB order
+                                                    return arr.copy()
+
+                                                pix_item = None
+                                                for it in scene.items():
+                                                    try:
+                                                        from PyQt6 import (
+                                                            QtWidgets as _qtw,
+                                                        )
+
+                                                        if isinstance(
+                                                            it, _qtw.QGraphicsPixmapItem
+                                                        ):
+                                                            pix_item = it
+                                                            break
+                                                    except Exception:
+                                                        if hasattr(it, "pixmap"):
+                                                            pix_item = it
+                                                            break
+                                                if pix_item is not None:
+                                                    qimg = pix_item.pixmap().toImage()
+                                                    try:
+                                                        img_np = _qimage_to_numpy(qimg)
+                                                    except Exception:
+                                                        img_np = None
+                                                # fallback: if QGraphicsPixmapItem not present, try loading from original path
+                                                if img_np is None:
+                                                    try:
+                                                        if path and os.path.exists(
+                                                            path
+                                                        ):
+                                                            # read with cv2 (BGR) then convert to RGB
+                                                            bgr = cv2.imread(path)
+                                                            if bgr is not None:
+                                                                try:
+                                                                    rgb = cv2.cvtColor(
+                                                                        bgr,
+                                                                        cv2.COLOR_BGR2RGB,
+                                                                    )
+                                                                except Exception:
+                                                                    rgb = bgr[
+                                                                        :, :, ::-1
+                                                                    ]
+                                                                img_np = rgb
+                                                                # debug write
+                                                                try:
+                                                                    dbg_path = (
+                                                                        pathlib.Path(
+                                                                            __file__
+                                                                        )
+                                                                        .resolve()
+                                                                        .parents[1]
+                                                                        / "prediction_debug.txt"
+                                                                    )
+                                                                    with open(
+                                                                        dbg_path,
+                                                                        "a",
+                                                                        encoding="utf-8",
+                                                                    ) as _dbg:
+                                                                        _dbg.write(
+                                                                            f"COLOR_DEBUG: loaded_image_from_path: {path}\n"
+                                                                        )
+                                                                        _dbg.write(
+                                                                            f"loaded_image_shape: {img_np.shape if img_np is not None else None}\n"
+                                                                        )
+                                                                except Exception:
+                                                                    pass
+                                                    except Exception:
+                                                        pass
+                                            except Exception:
+                                                img_np = None
                                             inf_table.setRowCount(0)
                                             for p in preds:
                                                 r = inf_table.rowCount()
@@ -404,10 +541,69 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
                                                     )
                                                 except Exception:
                                                     pass
-                                                # Color: intentionally left blank for now
+                                                # Color: compute using masked pixels if available
                                                 try:
+                                                    col_text = ""
+                                                    try:
+                                                        if img_np is not None:
+                                                            raw = p.get("raw") or {}
+                                                            mask_input = (
+                                                                p.get("points")
+                                                                or raw.get(
+                                                                    "segmentation"
+                                                                )
+                                                                or raw.get("mask")
+                                                            )
+                                                            if mask_input:
+                                                                try:
+                                                                    col_text = (
+                                                                        get_color_name(
+                                                                            img_np,
+                                                                            mask_input,
+                                                                        )
+                                                                    )
+                                                                except Exception:
+                                                                    col_text = ""
+                                                            else:
+                                                                col_text = ""
+                                                        else:
+                                                            col_text = ""
+                                                    except Exception:
+                                                        col_text = ""
+                                                    # write debug info about color computation
+                                                    try:
+                                                        dbg_path = (
+                                                            pathlib.Path(__file__)
+                                                            .resolve()
+                                                            .parents[1]
+                                                            / "prediction_debug.txt"
+                                                        )
+                                                        with open(
+                                                            dbg_path,
+                                                            "a",
+                                                            encoding="utf-8",
+                                                        ) as _dbg:
+                                                            _dbg.write("COLOR_DEBUG:\n")
+                                                            _dbg.write(
+                                                                f"has_image_np: {img_np is not None}\n"
+                                                            )
+                                                            try:
+                                                                _dbg.write(
+                                                                    f"mask_input_type: {type(mask_input)}\n"
+                                                                )
+                                                            except Exception:
+                                                                _dbg.write(
+                                                                    "mask_input_type: <err>\n"
+                                                                )
+                                                            _dbg.write(
+                                                                f"col_text: {col_text}\n"
+                                                            )
+                                                    except Exception:
+                                                        pass
                                                     col_item = (
-                                                        QtWidgets.QTableWidgetItem("")
+                                                        QtWidgets.QTableWidgetItem(
+                                                            col_text
+                                                        )
                                                     )
                                                     inf_table.setItem(r, 2, col_item)
                                                 except Exception:
