@@ -3,6 +3,7 @@ from PyQt6.QtCore import pyqtSignal, QUrl
 import os
 import json
 from threading import Thread
+
 try:
     from mpcamera.services.directus import DirectusClient
 except Exception:
@@ -31,6 +32,23 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, ui_path: str):
         super().__init__()
         uic.loadUi(ui_path, self)
+
+        # enforce a fixed window size per user request
+        try:
+            self.setFixedSize(1170, 760)
+        except Exception:
+            pass
+
+        # ensure stacked widget shows homepage (index 0) by default
+        try:
+            sw = getattr(self, "stackedWidget", None)
+            if sw is not None:
+                try:
+                    sw.setCurrentIndex(0)
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
         # mapping from nav widget name -> stacked index
         self.nav_map = {
@@ -120,32 +138,19 @@ class MainWindow(QtWidgets.QMainWindow):
                 # delegate camera initialization to the page module
                 try:
                     from mpcamera.controllers import camera_page as camera_page_module
+
                     camera_page_module.setup(camera_page, self)
                 except Exception as e:
                     print("Failed to initialize camera page module:", e)
             else:
-                print("cameraPage placeholder not found or cameraPage.ui missing at:", camera_ui_path)
+                print(
+                    "cameraPage placeholder not found or cameraPage.ui missing at:",
+                    camera_ui_path,
+                )
         except Exception as e:
             print("Error setting up cameraPage UI:", e)
         # If a separate chartPage.ui exists, load it into the placeholder page
-        try:
-            chart_ui_path = os.path.join(
-                os.path.dirname(__file__), "mpcamera", "layouts", "chartPage.ui"
-            )
-            chart_page = self.findChild(QtWidgets.QWidget, "chartPage")
-            if chart_page is not None and os.path.exists(chart_ui_path):
-                print("Loading chartPage UI from:", chart_ui_path)
-                uic.loadUi(chart_ui_path, chart_page)
-                # delegate chart initialization to the page module
-                try:
-                    from mpcamera.controllers import chart_page as chart_page_module
-                    chart_page_module.setup(chart_page, self)
-                except Exception as e:
-                    print("Failed to initialize chart page module:", e)
-            else:
-                print("chartPage placeholder not found or chartPage.ui missing at:", chart_ui_path)
-        except Exception as e:
-            print("Error setting up chartPage UI:", e)
+        # chart page removed: we intentionally do not load chartPage.ui
         # start fetching Directus data in background so pages can populate
         try:
             self._start_directus_fetch()
@@ -169,8 +174,35 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         try:
             print(f"Nav clicked: {nav_name}")
+            # special-case chartNavButton: ask user whether to open external link in browser
+            if nav_name == "chartNavButton":
+                try:
+                    mb = QtWidgets.QMessageBox(self)
+                    mb.setIcon(QtWidgets.QMessageBox.Icon.Question)
+                    mb.setWindowTitle("Open in browser?")
+                    mb.setText("Open SoilSight in your browser?")
+                    mb.setInformativeText(
+                        "This will open https://soilsight-one.vercel.app in your default web browser."
+                    )
+                    mb.setStandardButtons(
+                        QtWidgets.QMessageBox.StandardButton.Yes
+                        | QtWidgets.QMessageBox.StandardButton.No
+                    )
+                    resp = mb.exec()
+                    if resp == QtWidgets.QMessageBox.StandardButton.Yes:
+                        try:
+                            import webbrowser
+
+                            webbrowser.open("https://soilsight-one.vercel.app")
+                        except Exception as e:
+                            print("Failed to open browser:", e)
+                except Exception as e:
+                    print("Error prompting to open external chart link:", e)
+                # do not change stacked widget index for chart navigation
+                return
+
             # switch stacked widget index if present
-            sw = getattr(self, 'stackedWidget', None)
+            sw = getattr(self, "stackedWidget", None)
             if sw is not None:
                 idx = self.nav_map.get(nav_name)
                 if idx is not None:
@@ -197,7 +229,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     f.setStyleSheet(self.UNSELECTED_STYLE)
 
             # if soilsightLogo was clicked, do not highlight any frame (per spec)
-            if nav_name == 'soilsightLogo':
+            if nav_name == "soilsightLogo":
                 return
 
             # otherwise highlight the associated frame
@@ -236,7 +268,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 print("Directus fetch complete")
                 # notify main thread
                 try:
-                    QtCore.QMetaObject.invokeMethod(self, "_on_directus_loaded", QtCore.Qt.ConnectionType.QueuedConnection)
+                    QtCore.QMetaObject.invokeMethod(
+                        self,
+                        "_on_directus_loaded",
+                        QtCore.Qt.ConnectionType.QueuedConnection,
+                    )
                 except Exception:
                     # fallback: emit signal directly
                     try:
@@ -258,11 +294,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def get_sites(self):
         """Return cached sites data or None if not yet fetched."""
-        return getattr(self, 'sites', None)
+        return getattr(self, "sites", None)
 
     def get_soilsamples(self):
         """Return cached soilsamples data or None if not yet fetched."""
-        return getattr(self, 'soilsamples', None)
+        return getattr(self, "soilsamples", None)
 
     def _extract_directus_items(self, obj):
         """Helper to extract list of items from a Directus response.
@@ -272,8 +308,8 @@ class MainWindow(QtWidgets.QMainWindow):
         if obj is None:
             return []
         try:
-            if isinstance(obj, dict) and 'data' in obj:
-                return obj.get('data') or []
+            if isinstance(obj, dict) and "data" in obj:
+                return obj.get("data") or []
             if isinstance(obj, list):
                 return obj
         except Exception:
@@ -289,4 +325,3 @@ class MainWindow(QtWidgets.QMainWindow):
     # farm change handled in camera_page
 
     # soil change handled in camera_page
-

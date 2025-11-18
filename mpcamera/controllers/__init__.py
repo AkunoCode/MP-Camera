@@ -4,4 +4,4 @@ This package contains modules that encapsulate logic for individual pages
 so `ui_nav.py` remains a thin coordinator.
 """
 
-__all__ = ["camera_page", "chart_page"]
+__all__ = ["camera_page"]

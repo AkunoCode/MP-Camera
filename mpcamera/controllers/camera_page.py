@@ -1,6 +1,7 @@
 from PyQt6 import QtWidgets, QtCore, QtGui
 from threading import Thread
 import traceback
+
 try:
     from mpcamera.services.roboflow import RoboflowClient
 except Exception:
@@ -55,7 +56,12 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
                     farm_combo.blockSignals(True)
                     farm_combo.clear()
                     for item in sites:
-                        name = item.get("site_name") or item.get("name") or item.get("title") or str(item.get("id"))
+                        name = (
+                            item.get("site_name")
+                            or item.get("name")
+                            or item.get("title")
+                            or str(item.get("id"))
+                        )
                         farm_combo.addItem(str(name), item.get("id"))
                     try:
                         farm_combo.setCurrentIndex(-1)
@@ -93,7 +99,9 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
                     soil_combo.addItem(label, sid)
                     count += 1
             soil_combo.blockSignals(False)
-            print(f"Populated soilCombo with {count} entries (filter site_id={site_id})")
+            print(
+                f"Populated soilCombo with {count} entries (filter site_id={site_id})"
+            )
 
         def on_farm_changed():
             try:
@@ -131,7 +139,10 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
 
         # If data already present, populate immediately, otherwise wait for main signal
         try:
-            if main_window.get_sites() is not None and main_window.get_soilsamples() is not None:
+            if (
+                main_window.get_sites() is not None
+                and main_window.get_soilsamples() is not None
+            ):
                 populate_from_cache()
             else:
                 try:
@@ -157,8 +168,15 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
 
             # Create a simple overlay widget that will be shown on top of the camera view
             overlay = None
+
             class _Spinner(QtWidgets.QWidget):
-                def __init__(self, parent=None, diameter=40, line_width=4, color=QtGui.QColor(255,255,255)):
+                def __init__(
+                    self,
+                    parent=None,
+                    diameter=40,
+                    line_width=4,
+                    color=QtGui.QColor(255, 255, 255),
+                ):
                     super().__init__(parent)
                     self._angle = 0
                     self._timer = QtCore.QTimer(self)
@@ -193,10 +211,16 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
                     pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
                     painter.setPen(pen)
                     # draw arc
-                    rect = QtCore.QRectF(self._line_width/2, self._line_width/2, r.width()-self._line_width, r.height()-self._line_width)
+                    rect = QtCore.QRectF(
+                        self._line_width / 2,
+                        self._line_width / 2,
+                        r.width() - self._line_width,
+                        r.height() - self._line_width,
+                    )
                     start_angle = int(self._angle * 16)
                     span = int(270 * 16)  # 270 degrees arc
                     painter.drawArc(rect, start_angle, span)
+
             class _ViewportEventFilter(QtCore.QObject):
                 def __init__(self, overlay_widget):
                     super().__init__()
@@ -204,7 +228,10 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
 
                 def eventFilter(self, obj, event):
                     try:
-                        if event.type() == QtCore.QEvent.Type.Resize and self._overlay is not None:
+                        if (
+                            event.type() == QtCore.QEvent.Type.Resize
+                            and self._overlay is not None
+                        ):
                             self._overlay.setGeometry(obj.rect())
                     except Exception:
                         pass
@@ -219,8 +246,12 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
                     if overlay is None:
                         overlay = QtWidgets.QWidget(vp)
                         overlay.setObjectName("camera_loading_overlay")
-                        overlay.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
-                        overlay.setStyleSheet("#camera_loading_overlay { background: rgba(0,0,0,0.5); }")
+                        overlay.setAttribute(
+                            QtCore.Qt.WidgetAttribute.WA_StyledBackground, True
+                        )
+                        overlay.setStyleSheet(
+                            "#camera_loading_overlay { background: rgba(0,0,0,0.5); }"
+                        )
                         lay = QtWidgets.QVBoxLayout(overlay)
                         lay.setContentsMargins(0, 0, 0, 0)
                         lay.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
@@ -260,12 +291,15 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
                     if cam_view is not None:
                         cam_view.setScene(scene)
                         cam_view.setRenderHints(
-                            QtGui.QPainter.RenderHint.SmoothPixmapTransform | QtGui.QPainter.RenderHint.Antialiasing
+                            QtGui.QPainter.RenderHint.SmoothPixmapTransform
+                            | QtGui.QPainter.RenderHint.Antialiasing
                         )
                         # fit the image into the view while keeping aspect ratio
                         try:
                             rect = scene.itemsBoundingRect()
-                            cam_view.fitInView(rect, QtCore.Qt.AspectRatioMode.KeepAspectRatio)
+                            cam_view.fitInView(
+                                rect, QtCore.Qt.AspectRatioMode.KeepAspectRatio
+                            )
                         except Exception:
                             pass
                     # send to Roboflow inference asynchronously (if service available)
@@ -293,9 +327,13 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
                             notifier = _OverlayNotifier()
                             try:
                                 if ov is not None:
+
                                     def _hide_and_stop():
                                         try:
-                                            if getattr(ov, "_spinner", None) is not None:
+                                            if (
+                                                getattr(ov, "_spinner", None)
+                                                is not None
+                                            ):
                                                 ov._spinner.stop()
                                         except Exception:
                                             pass
@@ -315,22 +353,39 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
                                     res = client.run_workflow(p)
                                     print("roboflow: inference result:", res)
                                 except Exception:
-                                    print("roboflow: inference failed:\n", traceback.format_exc())
+                                    print(
+                                        "roboflow: inference failed:\n",
+                                        traceback.format_exc(),
+                                    )
                                 finally:
                                     try:
                                         note.finished.emit()
                                     except Exception:
                                         # fallback: try hiding overlay on main thread
                                         try:
-                                            QtCore.QTimer.singleShot(0, lambda: ov.hide() if ov is not None else None)
+                                            QtCore.QTimer.singleShot(
+                                                0,
+                                                lambda: (
+                                                    ov.hide()
+                                                    if ov is not None
+                                                    else None
+                                                ),
+                                            )
                                         except Exception:
                                             pass
 
-                            Thread(target=_run_inference, args=(path, notifier), daemon=True).start()
+                            Thread(
+                                target=_run_inference,
+                                args=(path, notifier),
+                                daemon=True,
+                            ).start()
                         else:
                             print("roboflow: service not available (module missing)")
                     except Exception:
-                        print("roboflow: failed to start inference thread:\n", traceback.format_exc())
+                        print(
+                            "roboflow: failed to start inference thread:\n",
+                            traceback.format_exc(),
+                        )
                 except Exception as e:
                     print("camera_page: error showing image in view:", e)
 
