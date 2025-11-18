@@ -142,6 +142,11 @@ class HoverEllipse(QtWidgets.QGraphicsEllipseItem):
         self._label_text = text or ""
         # show label always on top of shape; still accept hover for tooltip
         self.setAcceptHoverEvents(True)
+        try:
+            # accept left-button clicks so we can map clicks to table selection
+            self.setAcceptedMouseButtons(QtCore.Qt.MouseButton.LeftButton)
+        except Exception:
+            pass
         self._color = color
         # create text + background immediately and position at center
         try:
@@ -192,6 +197,81 @@ class HoverEllipse(QtWidgets.QGraphicsEllipseItem):
         super().hoverLeaveEvent(event)
         super().hoverLeaveEvent(event)
 
+    def mousePressEvent(self, event):
+        try:
+            scene = self.scene()
+            if scene is None:
+                return super().mousePressEvent(event)
+            views = scene.views()
+            if not views:
+                return super().mousePressEvent(event)
+            # try to find the inferenceTable in any view's window
+            for v in views:
+                try:
+                    win = v.window()
+                    tbl = None
+                    try:
+                        tbl = win.findChild(QtWidgets.QTableWidget, "inferenceTable")
+                    except Exception:
+                        tbl = None
+                    if tbl is None:
+                        # try vantage: search parents
+                        try:
+                            parent = v.parent()
+                            if parent is not None:
+                                tbl = parent.findChild(
+                                    QtWidgets.QTableWidget, "inferenceTable"
+                                )
+                        except Exception:
+                            pass
+                    if tbl is None:
+                        continue
+                    # find matching row by raw_key (data(1)) or seq (data(2))
+                    key = self.data(1)
+                    seq = self.data(2)
+                    found = False
+                    for row in range(tbl.rowCount()):
+                        try:
+                            it = tbl.item(row, 0)
+                            if it is None:
+                                continue
+                            val = it.data(QtCore.Qt.ItemDataRole.UserRole)
+                            if val is not None and key is not None and val == key:
+                                tbl.clearSelection()
+                                tbl.selectRow(row)
+                                try:
+                                    tbl.scrollToItem(it)
+                                except Exception:
+                                    pass
+                                found = True
+                                break
+                            # fallback: compare seq if stored as UserRole
+                            try:
+                                if (
+                                    seq is not None
+                                    and val is not None
+                                    and str(val) == str(seq)
+                                ):
+                                    tbl.clearSelection()
+                                    tbl.selectRow(row)
+                                    try:
+                                        tbl.scrollToItem(it)
+                                    except Exception:
+                                        pass
+                                    found = True
+                                    break
+                            except Exception:
+                                pass
+                        except Exception:
+                            pass
+                    if found:
+                        return
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        return super().mousePressEvent(event)
+
     def paint(self, painter, option, widget=None):
         try:
             # draw a translucent fill with a slightly darker outline
@@ -216,6 +296,10 @@ class HoverPolygon(QtWidgets.QGraphicsPolygonItem):
         super().__init__(polygon, parent)
         self._label_text = text or ""
         self.setAcceptHoverEvents(True)
+        try:
+            self.setAcceptedMouseButtons(QtCore.Qt.MouseButton.LeftButton)
+        except Exception:
+            pass
         self._color = color
         # create label and background centered on polygon
         try:
@@ -262,6 +346,72 @@ class HoverPolygon(QtWidgets.QGraphicsPolygonItem):
     def hoverLeaveEvent(self, event):
         super().hoverLeaveEvent(event)
         super().hoverLeaveEvent(event)
+
+    def mousePressEvent(self, event):
+        try:
+            scene = self.scene()
+            if scene is None:
+                return super().mousePressEvent(event)
+            views = scene.views()
+            if not views:
+                return super().mousePressEvent(event)
+            for v in views:
+                try:
+                    win = v.window()
+                    tbl = None
+                    try:
+                        tbl = win.findChild(QtWidgets.QTableWidget, "inferenceTable")
+                    except Exception:
+                        tbl = None
+                    if tbl is None:
+                        try:
+                            parent = v.parent()
+                            if parent is not None:
+                                tbl = parent.findChild(
+                                    QtWidgets.QTableWidget, "inferenceTable"
+                                )
+                        except Exception:
+                            pass
+                    if tbl is None:
+                        continue
+                    key = self.data(1)
+                    seq = self.data(2)
+                    for row in range(tbl.rowCount()):
+                        try:
+                            it = tbl.item(row, 0)
+                            if it is None:
+                                continue
+                            val = it.data(QtCore.Qt.ItemDataRole.UserRole)
+                            if val is not None and key is not None and val == key:
+                                tbl.clearSelection()
+                                tbl.selectRow(row)
+                                try:
+                                    tbl.scrollToItem(it)
+                                except Exception:
+                                    pass
+                                return
+                            try:
+                                if (
+                                    seq is not None
+                                    and val is not None
+                                    and str(val) == str(seq)
+                                ):
+                                    tbl.clearSelection()
+                                    tbl.selectRow(row)
+                                    try:
+                                        tbl.scrollToItem(it)
+                                    except Exception:
+                                        pass
+                                    return
+                            except Exception:
+                                pass
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        return super().mousePressEvent(event)
 
     def paint(self, painter, option, widget=None):
         try:
@@ -478,10 +628,39 @@ def render_predictions_on_scene(scene: QtWidgets.QGraphicsScene, result):
                         color = color_for_label(label_text)
                         # prefer class-specific colors when possible
                         color = _color_for_class(label, fallback_text=label_text)
+                        # annotate overlays with a sequential index to allow stable mapping
                         hp = HoverPolygon(poly, text=label_text, color=color)
                         hp.setZValue(20)
                         try:
-                            hp.setData(0, "inference_overlay")
+                            # tag overlay with a stable key for selection mapping
+                            try:
+                                # key: detection_id or id or JSON dump of raw pred
+                                raw_key = None
+                                try:
+                                    raw_key = p.get("detection_id") or p.get("id")
+                                except Exception:
+                                    raw_key = None
+                                if raw_key is None:
+                                    try:
+                                        raw_key = json.dumps(
+                                            p, sort_keys=True, default=str
+                                        )
+                                    except Exception:
+                                        raw_key = str(p)
+                                hp.setData(0, "inference_overlay")
+                                hp.setData(1, raw_key)
+                                try:
+                                    # assign a sequential index key for mapping (use key 2)
+                                    seq = getattr(scene, "_inference_overlay_seq", 0)
+                                    hp.setData(2, seq)
+                                    setattr(scene, "_inference_overlay_seq", seq + 1)
+                                except Exception:
+                                    pass
+                            except Exception:
+                                try:
+                                    hp.setData(0, "inference_overlay")
+                                except Exception:
+                                    pass
                         except Exception:
                             pass
                         # set tooltip with class and confidence
@@ -552,9 +731,29 @@ def render_predictions_on_scene(scene: QtWidgets.QGraphicsScene, result):
                 )
                 he.setZValue(20)
                 try:
+                    raw_key = None
+                    try:
+                        raw_key = p.get("detection_id") or p.get("id")
+                    except Exception:
+                        raw_key = None
+                    if raw_key is None:
+                        try:
+                            raw_key = json.dumps(p, sort_keys=True, default=str)
+                        except Exception:
+                            raw_key = str(p)
                     he.setData(0, "inference_overlay")
+                    he.setData(1, raw_key)
+                    try:
+                        seq = getattr(scene, "_inference_overlay_seq", 0)
+                        he.setData(2, seq)
+                        setattr(scene, "_inference_overlay_seq", seq + 1)
+                    except Exception:
+                        pass
                 except Exception:
-                    pass
+                    try:
+                        he.setData(0, "inference_overlay")
+                    except Exception:
+                        pass
                 try:
                     if score is not None:
                         sc = float(score)

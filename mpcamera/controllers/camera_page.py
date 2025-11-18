@@ -168,6 +168,54 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
         try:
             img_btn = camera_page.findChild(QtWidgets.QPushButton, "imgUploadButton")
             cam_view = camera_page.findChild(QtWidgets.QGraphicsView, "cameraView")
+            # replace designer QGraphicsView with ZoomableGraphicsView at runtime
+            try:
+                from mpcamera.ui.zoomable_view import ZoomableGraphicsView
+
+                if cam_view is not None and not isinstance(
+                    cam_view, ZoomableGraphicsView
+                ):
+                    try:
+                        parent = cam_view.parentWidget()
+                        layout = None
+                        if parent is not None:
+                            layout = parent.layout()
+                        # create replacement view and copy objectName so findChild still works
+                        new_view = ZoomableGraphicsView(parent)
+                        try:
+                            new_view.setObjectName(cam_view.objectName())
+                        except Exception:
+                            pass
+                        # copy sizePolicy and minimum/maximum sizes
+                        try:
+                            new_view.setSizePolicy(cam_view.sizePolicy())
+                            new_view.setMinimumSize(cam_view.minimumSize())
+                            new_view.setMaximumSize(cam_view.maximumSize())
+                        except Exception:
+                            pass
+                        # replace widget in layout if possible
+                        replaced = False
+                        if layout is not None:
+                            for i in range(layout.count()):
+                                try:
+                                    it = layout.itemAt(i)
+                                    if it and it.widget() is cam_view:
+                                        layout.removeWidget(cam_view)
+                                        cam_view.setParent(None)
+                                        layout.insertWidget(i, new_view)
+                                        replaced = True
+                                        break
+                                except Exception:
+                                    pass
+                        if not replaced and parent is not None:
+                            # fallback: reparent into same parent
+                            cam_view.setParent(None)
+                            new_view.setParent(parent)
+                        cam_view = new_view
+                    except Exception:
+                        pass
+            except Exception:
+                pass
 
             # ensure mouse move events are delivered to the view and its viewport
             # so QGraphicsItems that rely on hover events receive them
@@ -509,19 +557,100 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
                                                         pass
                                             except Exception:
                                                 img_np = None
+                                            # collect overlay mapping (index -> raw_key) from scene so we can assign stable keys
+                                            overlay_index_map = {}
+                                            try:
+                                                if (
+                                                    cam_view is not None
+                                                    and cam_view.scene() is not None
+                                                ):
+                                                    for it_overlay in list(
+                                                        cam_view.scene().items()
+                                                    ):
+                                                        try:
+                                                            if (
+                                                                it_overlay.data(0)
+                                                                == "inference_overlay"
+                                                            ):
+                                                                try:
+                                                                    idx = (
+                                                                        it_overlay.data(
+                                                                            2
+                                                                        )
+                                                                    )
+                                                                    key = (
+                                                                        it_overlay.data(
+                                                                            1
+                                                                        )
+                                                                    )
+                                                                    if idx is not None:
+                                                                        try:
+                                                                            overlay_index_map[
+                                                                                int(idx)
+                                                                            ] = key
+                                                                        except (
+                                                                            Exception
+                                                                        ):
+                                                                            overlay_index_map[
+                                                                                idx
+                                                                            ] = key
+                                                                except Exception:
+                                                                    pass
+                                                        except Exception:
+                                                            pass
+                                            except Exception:
+                                                overlay_index_map = {}
+
                                             inf_table.setRowCount(0)
                                             for p in preds:
                                                 r = inf_table.rowCount()
                                                 inf_table.insertRow(r)
                                                 # Shape
                                                 try:
-                                                    inf_table.setItem(
-                                                        r,
-                                                        0,
+                                                    # create label item and attach a stable raw_key (prefer overlay index mapping)
+                                                    label_item = (
                                                         QtWidgets.QTableWidgetItem(
                                                             str(p.get("label") or "")
-                                                        ),
+                                                        )
                                                     )
+                                                    try:
+                                                        # prefer to use overlay_index_map if available
+                                                        assigned_key = None
+                                                        try:
+                                                            assigned_key = (
+                                                                overlay_index_map.get(r)
+                                                            )
+                                                        except Exception:
+                                                            assigned_key = None
+                                                        if assigned_key is None:
+                                                            # fallback to deriving raw_key from the prediction dict
+                                                            try:
+                                                                assigned_key = p.get(
+                                                                    "detection_id"
+                                                                ) or p.get("id")
+                                                            except Exception:
+                                                                assigned_key = None
+                                                        if assigned_key is None:
+                                                            try:
+                                                                assigned_key = (
+                                                                    json.dumps(
+                                                                        p,
+                                                                        sort_keys=True,
+                                                                        default=str,
+                                                                    )
+                                                                )
+                                                            except Exception:
+                                                                assigned_key = str(p)
+                                                        try:
+                                                            label_item.setData(
+                                                                QtCore.Qt.ItemDataRole.UserRole,
+                                                                assigned_key,
+                                                            )
+                                                        except Exception:
+                                                            pass
+                                                    except Exception:
+                                                        pass
+                                                    inf_table.setItem(r, 0, label_item)
                                                 except Exception:
                                                     pass
                                                 # Confidence
@@ -620,6 +749,130 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
                                                     )
                                                 except Exception:
                                                     pass
+                                    except Exception:
+                                        pass
+
+                                    # connect selection handler: selecting a row isolates its overlay(s)
+                                    try:
+                                        if not getattr(
+                                            inf_table,
+                                            "_overlay_selection_connected",
+                                            False,
+                                        ):
+
+                                            def _on_inf_selection_changed(
+                                                selected, deselected
+                                            ):
+                                                try:
+                                                    sel_idxs = (
+                                                        inf_table.selectionModel().selectedRows()
+                                                    )
+                                                    # fallback for cell-selection tables: collect selected items' rows
+                                                    if not sel_idxs:
+                                                        try:
+                                                            items = (
+                                                                inf_table.selectedItems()
+                                                            )
+                                                            rows = sorted(
+                                                                {
+                                                                    it.row()
+                                                                    for it in items
+                                                                }
+                                                            )
+                                                            sel_idxs = [
+                                                                inf_table.model().index(
+                                                                    r, 0
+                                                                )
+                                                                for r in rows
+                                                            ]
+                                                        except Exception:
+                                                            sel_idxs = []
+                                                    selected_keys = set()
+                                                    for idx in sel_idxs:
+                                                        try:
+                                                            it = inf_table.item(
+                                                                idx.row(), 0
+                                                            )
+                                                            if it is not None:
+                                                                k = it.data(
+                                                                    QtCore.Qt.ItemDataRole.UserRole
+                                                                )
+                                                                if k is not None:
+                                                                    selected_keys.add(k)
+                                                        except Exception:
+                                                            pass
+                                                    scene = (
+                                                        cam_view.scene()
+                                                        if cam_view is not None
+                                                        else None
+                                                    )
+                                                    if scene is None:
+                                                        return
+                                                    show_all = len(selected_keys) == 0
+                                                    for it in list(scene.items()):
+                                                        try:
+                                                            if (
+                                                                it.data(0)
+                                                                == "inference_overlay"
+                                                            ):
+                                                                if show_all:
+                                                                    it.setVisible(True)
+                                                                else:
+                                                                    try:
+                                                                        item_key = (
+                                                                            it.data(1)
+                                                                        )
+                                                                        it.setVisible(
+                                                                            item_key
+                                                                            in selected_keys
+                                                                        )
+                                                                    except Exception:
+                                                                        it.setVisible(
+                                                                            False
+                                                                        )
+                                                        except Exception:
+                                                            pass
+                                                except Exception:
+                                                    pass
+                                                try:
+                                                    # write a small debug record for selection actions
+                                                    dbg_path = (
+                                                        pathlib.Path(__file__)
+                                                        .resolve()
+                                                        .parents[1]
+                                                        / "prediction_debug.txt"
+                                                    )
+                                                    try:
+                                                        with open(
+                                                            dbg_path,
+                                                            "a",
+                                                            encoding="utf-8",
+                                                        ) as _dbg:
+                                                            _dbg.write(
+                                                                "--- SELECTION_CHANGED ---\n"
+                                                            )
+                                                            _dbg.write(
+                                                                f"selected_keys: {list(selected_keys)}\n"
+                                                            )
+                                                            _dbg.write(
+                                                                f"show_all: {show_all}\n"
+                                                            )
+                                                    except Exception:
+                                                        pass
+                                                except Exception:
+                                                    pass
+
+                                            try:
+                                                inf_table.selectionModel().selectionChanged.connect(
+                                                    _on_inf_selection_changed
+                                                )
+                                                setattr(
+                                                    inf_table,
+                                                    "_overlay_selection_connected",
+                                                    True,
+                                                )
+                                            except Exception:
+                                                pass
                                     except Exception:
                                         pass
 
