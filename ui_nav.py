@@ -1,6 +1,12 @@
 from PyQt6 import uic, QtWidgets, QtGui, QtCore
 from PyQt6.QtCore import pyqtSignal, QUrl
 import os
+import json
+from threading import Thread
+try:
+    from mpcamera.directus.directus import DirectusClient
+except Exception:
+    DirectusClient = None
 
 try:
     from PyQt6.QtWebEngineWidgets import QWebEngineView
@@ -17,6 +23,8 @@ class ClickableLabel(QtWidgets.QLabel):
 
 
 class MainWindow(QtWidgets.QMainWindow):
+    # Emitted on the main thread when Directus data has been fetched and cached
+    dataLoaded = pyqtSignal()
     SELECTED_STYLE = "background-color: white;"
     UNSELECTED_STYLE = "background-color: black;"
 
@@ -183,6 +191,49 @@ class MainWindow(QtWidgets.QMainWindow):
             # don't crash if webengine isn't available or ui isn't present
             print("Error setting up chartPage webview:", e)
 
+        # Start background fetch of Directus collections (sites, soilsamples)
+        try:
+            self.sites = None
+            self.soilsamples = None
+            self._start_directus_fetch()
+        except Exception as e:
+            print("Failed to start Directus fetch:", e)
+
+        # If a separate cameraPage.ui exists, load it into the placeholder page
+        try:
+            camera_ui_path = os.path.join(
+                os.path.dirname(__file__), "mpcamera", "layouts", "cameraPage.ui"
+            )
+            camera_page = self.findChild(QtWidgets.QWidget, "cameraPage")
+            if camera_page is not None and os.path.exists(camera_ui_path):
+                print("Loading cameraPage UI from:", camera_ui_path)
+                # load the camera page UI into the placeholder widget
+                uic.loadUi(camera_ui_path, camera_page)
+
+                # Basic diagnostics: list children created under cameraPage
+                try:
+                    children = camera_page.children()
+                    names = [getattr(c, 'objectName', lambda: '')() if hasattr(c, 'objectName') else type(c).__name__ for c in children]
+                    print("cameraPage children:", names)
+                except Exception:
+                    pass
+                # attempt to populate farmCombo and soilCombo if data is available
+                try:
+                    if self.get_sites() is not None and self.get_soilsamples() is not None:
+                        self._populate_camera_combos(camera_page)
+                    else:
+                        # populate when directus data arrives
+                        try:
+                            self.dataLoaded.connect(lambda: self._populate_camera_combos(camera_page))
+                        except Exception:
+                            pass
+                except Exception as e:
+                    print("Error scheduling cameraPage combo population:", e)
+            else:
+                print("cameraPage placeholder not found or cameraPage.ui missing at:", camera_ui_path)
+        except Exception as e:
+            print("Error setting up cameraPage UI:", e)
+
     def on_nav_clicked(self, name: str):
         # soilsightLogo behaves as home: set stacked index 0 and make all frames black
         if name == "soilsightLogo":
@@ -267,3 +318,207 @@ class MainWindow(QtWidgets.QMainWindow):
             self._set_chart_zoom(new)
         except Exception as e:
             print("Error changing chart zoom:", e)
+
+    # -- Directus fetching helpers -------------------------------------------------
+    def _start_directus_fetch(self):
+        """Start a background thread to fetch Directus `sites` and `soilsamples`.
+
+        Results are stored on the window as `self.sites` and `self.soilsamples`.
+        When complete the `dataLoaded` signal is emitted on the main thread.
+        """
+        if DirectusClient is None:
+            print("DirectusClient not available (module import failed); skipping fetch")
+            return
+
+        def worker():
+            try:
+                client = DirectusClient()
+                print("Directus: fetching sites...")
+                sites = client.get_sites(params={"fields": "*"})
+                print("Directus: fetching soilsamples...")
+                soils = client.get_soilsamples(params={"fields": "*"})
+                # store results on the main window
+                self.sites = sites
+                self.soilsamples = soils
+                # Directus data fetched; not writing cache files to disk per configuration
+                print("Directus data fetched (not cached to disk)")
+                print("Directus fetch complete")
+                # notify main thread
+                try:
+                    QtCore.QMetaObject.invokeMethod(self, "_on_directus_loaded", QtCore.Qt.ConnectionType.QueuedConnection)
+                except Exception:
+                    # fallback: emit signal directly
+                    try:
+                        self.dataLoaded.emit()
+                    except Exception:
+                        pass
+            except Exception as e:
+                print("Directus fetch failed:", e)
+
+        t = Thread(target=worker, daemon=True)
+        t.start()
+
+    def _on_directus_loaded(self):
+        """Called on the main thread after Directus data has been fetched."""
+        try:
+            self.dataLoaded.emit()
+        except Exception:
+            pass
+
+    def get_sites(self):
+        """Return cached sites data or None if not yet fetched."""
+        return getattr(self, 'sites', None)
+
+    def get_soilsamples(self):
+        """Return cached soilsamples data or None if not yet fetched."""
+        return getattr(self, 'soilsamples', None)
+
+    def _extract_directus_items(self, obj):
+        """Helper to extract list of items from a Directus response.
+
+        Directus responses often come as {'data': [...]} or directly as a list.
+        """
+        if obj is None:
+            return []
+        try:
+            if isinstance(obj, dict) and 'data' in obj:
+                return obj.get('data') or []
+            if isinstance(obj, list):
+                return obj
+        except Exception:
+            pass
+        return []
+
+    def _populate_camera_combos(self, camera_page: QtWidgets.QWidget):
+        """Populate `farmCombo` and `soilCombo` widgets inside `camera_page`.
+
+        - `farmCombo` displays farm name (uses id as userData)
+        - `soilCombo` displays: "Sample ID [id] (date_collected)" (uses id as userData)
+        """
+        try:
+            farm_combo = camera_page.findChild(QtWidgets.QComboBox, 'farmCombo')
+            soil_combo = camera_page.findChild(QtWidgets.QComboBox, 'soilCombo')
+            sites = self._extract_directus_items(self.get_sites())
+            soils = self._extract_directus_items(self.get_soilsamples())
+
+            # store raw lists for later filtering
+            self._camera_sites_list = sites
+            self._camera_soils_list = soils
+
+            # populate farms (add an explicit empty selection at index 0)
+            if farm_combo is not None:
+                try:
+                    farm_combo.blockSignals(True)
+                    farm_combo.clear()
+                    for item in sites:
+                        name = item.get('site_name') or item.get('name') or item.get('title') or str(item.get('id'))
+                        farm_combo.addItem(str(name), item.get('id'))
+                    # leave no selection at startup
+                    try:
+                        farm_combo.setCurrentIndex(-1)
+                    except Exception:
+                        pass
+                    farm_combo.blockSignals(False)
+                    print(f"Populated farmCombo with {len(sites)} entries")
+                except Exception as e:
+                    print("Failed to populate farmCombo:", e)
+
+            # populate soilsamples (show all initially)
+            if soil_combo is not None:
+                try:
+                    self._populate_soil_combo(camera_page, None)
+                    # ensure no selection at startup
+                    try:
+                        soil_combo.setCurrentIndex(-1)
+                    except Exception:
+                        pass
+                except Exception as e:
+                    print("Failed to populate soilCombo:", e)
+
+            # connect signals: selecting farm filters soils; selecting soil sets farm
+            try:
+                if farm_combo is not None and soil_combo is not None:
+                    farm_combo.currentIndexChanged.connect(lambda idx, fc=farm_combo, cp=camera_page: self._on_farm_changed(fc, cp))
+                    soil_combo.currentIndexChanged.connect(lambda idx, sc=soil_combo, fc=farm_combo: self._on_soil_changed(sc, fc))
+            except Exception as e:
+                print("Failed to connect camera combo signals:", e)
+        except Exception as e:
+            print("Error populating camera combos:", e)
+
+    def _populate_soil_combo(self, camera_page: QtWidgets.QWidget, site_id):
+        """Populate the `soilCombo` with soilsamples filtered by `site_id`.
+
+        If `site_id` is None the method will show all soilsamples.
+        """
+        try:
+            soil_combo = camera_page.findChild(QtWidgets.QComboBox, 'soilCombo')
+            soils = getattr(self, '_camera_soils_list', []) or []
+            if soil_combo is None:
+                return
+            soil_combo.blockSignals(True)
+            soil_combo.clear()
+            count = 0
+            for item in soils:
+                s_site = self._get_site_id_from_sample(item)
+                if site_id is None or site_id == s_site:
+                    sid = item.get('id')
+                    date = item.get('date_collected') or item.get('date') or ''
+                    label = f"Sample ID {sid} ({date})"
+                    soil_combo.addItem(label, sid)
+                    count += 1
+            soil_combo.blockSignals(False)
+            print(f"Populated soilCombo with {count} entries (filter site_id={site_id})")
+        except Exception as e:
+            print("Error in _populate_soil_combo:", e)
+
+    def _get_site_id_from_sample(self, sample_item):
+        """Return the site id for a soilsample item (handles scalar or nested site).
+
+        Directus may return `site` as a scalar id or as an object; handle both.
+        """
+        if sample_item is None:
+            return None
+        try:
+            site = sample_item.get('site')
+            if isinstance(site, dict):
+                return site.get('id')
+            return site
+        except Exception:
+            return None
+
+    def _on_farm_changed(self, farm_combo: QtWidgets.QComboBox, camera_page: QtWidgets.QWidget):
+        try:
+            data = farm_combo.currentData()
+            site_id = data if data else None
+            # repopulate soils according to selection (None shows all)
+            self._populate_soil_combo(camera_page, site_id)
+        except Exception as e:
+            print("Error handling farm change:", e)
+
+    def _on_soil_changed(self, soil_combo: QtWidgets.QComboBox, farm_combo: QtWidgets.QComboBox):
+        try:
+            data = soil_combo.currentData()
+            if not data:
+                return
+            sid = data
+            soils = getattr(self, '_camera_soils_list', []) or []
+            match = None
+            for item in soils:
+                if item.get('id') == sid:
+                    match = item
+                    break
+            if match is None:
+                return
+            site_id = self._get_site_id_from_sample(match)
+            if site_id is None:
+                return
+            # set farm_combo to the matching site id if present
+            try:
+                idx = farm_combo.findData(site_id)
+                if idx != -1:
+                    farm_combo.setCurrentIndex(idx)
+            except Exception:
+                pass
+        except Exception as e:
+            print("Error handling soil change:", e)
+
