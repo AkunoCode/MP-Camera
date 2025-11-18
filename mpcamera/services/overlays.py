@@ -8,7 +8,9 @@ import json
 
 
 class OverlaySpinner(QtWidgets.QWidget):
-    def __init__(self, parent=None, diameter=40, line_width=4, color=QtGui.QColor(255, 255, 255)):
+    def __init__(
+        self, parent=None, diameter=40, line_width=4, color=QtGui.QColor(255, 255, 255)
+    ):
         super().__init__(parent)
         self._angle = 0
         self._timer = QtCore.QTimer(self)
@@ -85,7 +87,9 @@ def ensure_overlay_for_view(cam_view: QtWidgets.QGraphicsView):
         overlay = QtWidgets.QWidget(vp)
         overlay.setObjectName("camera_loading_overlay")
         overlay.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
-        overlay.setStyleSheet("#camera_loading_overlay { background: rgba(0,0,0,0.5); }")
+        overlay.setStyleSheet(
+            "#camera_loading_overlay { background: rgba(0,0,0,0.5); }"
+        )
         lay = QtWidgets.QVBoxLayout(overlay)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
