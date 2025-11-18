@@ -27,6 +27,7 @@ from mpcamera.ui.overlays import (
     show_debug_overlays,
 )
 from mpcamera.ui.overlays import ensure_overlay_for_view
+from mpcamera.utils.inference_utils import parse_result_to_preds, compute_aggregates
 
 
 # Directus and site helpers are provided by `camera_utils` service
@@ -312,6 +313,149 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
                                         return
                                     try:
                                         render_predictions_on_scene(scene, result)
+                                    except Exception:
+                                        pass
+                                except Exception:
+                                    pass
+                                # update inference table and counters
+                                try:
+                                    try:
+                                        preds = parse_result_to_preds(result)
+                                    except Exception:
+                                        preds = []
+
+                                    # write debug dump to prediction_debug.txt for troubleshooting
+                                    try:
+                                        dbg_path = (
+                                            pathlib.Path(__file__).resolve().parents[1]
+                                            / "prediction_debug.txt"
+                                        )
+                                        with open(
+                                            dbg_path, "a", encoding="utf-8"
+                                        ) as _dbg:
+                                            _dbg.write("--- INFERENCE RUN ---\n")
+                                            try:
+                                                _dbg.write("RAW_RESULT:\n")
+                                                _dbg.write(
+                                                    json.dumps(result, default=str)
+                                                    + "\n"
+                                                )
+                                            except Exception:
+                                                try:
+                                                    _dbg.write(str(result) + "\n")
+                                                except Exception:
+                                                    _dbg.write(
+                                                        "<unserializable raw result>\n"
+                                                    )
+                                            try:
+                                                _dbg.write(
+                                                    f"PARSED_PRED_COUNT: {len(preds)}\n"
+                                                )
+                                                _dbg.write("PARSED_PRED_ITEMS:\n")
+                                                _dbg.write(
+                                                    json.dumps(preds, default=str)
+                                                    + "\n"
+                                                )
+                                            except Exception:
+                                                try:
+                                                    _dbg.write(str(preds) + "\n")
+                                                except Exception:
+                                                    _dbg.write(
+                                                        "<unserializable preds>\n"
+                                                    )
+                                    except Exception:
+                                        pass
+
+                                    # populate inferenceTable
+                                    try:
+                                        inf_table = camera_page.findChild(
+                                            QtWidgets.QTableWidget, "inferenceTable"
+                                        )
+                                        if inf_table is not None:
+                                            inf_table.setRowCount(0)
+                                            for p in preds:
+                                                r = inf_table.rowCount()
+                                                inf_table.insertRow(r)
+                                                # Shape
+                                                try:
+                                                    inf_table.setItem(
+                                                        r,
+                                                        0,
+                                                        QtWidgets.QTableWidgetItem(
+                                                            str(p.get("label") or "")
+                                                        ),
+                                                    )
+                                                except Exception:
+                                                    pass
+                                                # Confidence
+                                                try:
+                                                    sc = p.get("score")
+                                                    sc_text = (
+                                                        f"{float(sc):.2f}"
+                                                        if sc is not None
+                                                        else ""
+                                                    )
+                                                    inf_table.setItem(
+                                                        r,
+                                                        1,
+                                                        QtWidgets.QTableWidgetItem(
+                                                            sc_text
+                                                        ),
+                                                    )
+                                                except Exception:
+                                                    pass
+                                                # Color: intentionally left blank for now
+                                                try:
+                                                    col_item = (
+                                                        QtWidgets.QTableWidgetItem("")
+                                                    )
+                                                    inf_table.setItem(r, 2, col_item)
+                                                except Exception:
+                                                    pass
+                                                # Size (placeholder)
+                                                try:
+                                                    sz = p.get("size")
+                                                    inf_table.setItem(
+                                                        r,
+                                                        3,
+                                                        QtWidgets.QTableWidgetItem(
+                                                            str(sz or "")
+                                                        ),
+                                                    )
+                                                except Exception:
+                                                    pass
+                                    except Exception:
+                                        pass
+
+                                    # aggregates
+                                    try:
+                                        ag = compute_aggregates(preds)
+
+                                        def _set_lbl(name, val):
+                                            try:
+                                                lbl = camera_page.findChild(
+                                                    QtWidgets.QLabel, name
+                                                )
+                                                if lbl is not None:
+                                                    lbl.setText(str(val))
+                                            except Exception:
+                                                pass
+
+                                        _set_lbl("totalCount", ag.get("total", 0))
+                                        ave = ag.get("ave_confidence")
+                                        _set_lbl(
+                                            "aveConfidence",
+                                            f"{ave:.2f}" if ave is not None else "0.00",
+                                        )
+                                        cnts = ag.get("counts", {})
+                                        _set_lbl(
+                                            "fragmentsCount", cnts.get("fragment", 0)
+                                        )
+                                        _set_lbl("sheetsCount", cnts.get("sheet", 0))
+                                        _set_lbl("fibersCount", cnts.get("fiber", 0))
+                                        _set_lbl("foamsCount", cnts.get("foam", 0))
+                                        _set_lbl("filmsCount", cnts.get("film", 0))
+                                        _set_lbl("beadsCount", cnts.get("bead", 0))
                                     except Exception:
                                         pass
                                 except Exception:
