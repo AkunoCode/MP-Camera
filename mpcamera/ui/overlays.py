@@ -7,6 +7,30 @@ from mpcamera.utils.prediction_utils import (
 import json
 
 
+# Preferred class colors (semi-translucent)
+_CLASS_COLOR_MAP = {
+    "sheet": QtGui.QColor(50, 130, 255, 160),
+    "fragment": QtGui.QColor(220, 50, 50, 160),
+    "fiber": QtGui.QColor(150, 63, 255, 160),
+    "bead": QtGui.QColor(255, 165, 0, 160),
+    "foam": QtGui.QColor(0, 200, 160, 160),
+    "film": QtGui.QColor(60, 180, 75, 160),
+}
+
+
+def _color_for_class(label, fallback_text=None):
+    try:
+        if not label:
+            return color_for_label(fallback_text or "")
+        key = str(label).strip().lower()
+        c = _CLASS_COLOR_MAP.get(key)
+        if c is not None:
+            return c
+    except Exception:
+        pass
+    return color_for_label(fallback_text or label)
+
+
 class OverlaySpinner(QtWidgets.QWidget):
     def __init__(
         self, parent=None, diameter=40, line_width=4, color=QtGui.QColor(255, 255, 255)
@@ -116,62 +140,62 @@ class HoverEllipse(QtWidgets.QGraphicsEllipseItem):
     ):
         super().__init__(x, y, w, h, parent)
         self._label_text = text or ""
+        # show label always on top of shape; still accept hover for tooltip
         self.setAcceptHoverEvents(True)
-        self._text_item = None
-        self._bg_item = None
         self._color = color
-
-    def hoverEnterEvent(self, event):
+        # create text + background immediately and position at center
         try:
-            if self._text_item is None:
-                txt = QtWidgets.QGraphicsSimpleTextItem(
-                    str(self._label_text), parent=self
-                )
-                txt.setBrush(QtGui.QBrush(QtGui.QColor(255, 255, 255)))
-                br = txt.boundingRect()
-                pad = 4
-                rect = QtCore.QRectF(
-                    br.x() - pad,
-                    br.y() - pad,
-                    br.width() + pad * 2,
-                    br.height() + pad * 2,
-                )
-                bg = QtWidgets.QGraphicsRectItem(rect, parent=self)
-                bg.setBrush(QtGui.QBrush(QtGui.QColor(0, 0, 0, 160)))
-                bg.setZValue(self.zValue() + 1)
-                txt.setZValue(self.zValue() + 2)
-                r = self.rect()
-                txt.setPos(r.width() + 6, -(br.height() / 2))
-                bg.setPos(txt.pos())
-                self._text_item = txt
-                self._bg_item = bg
-            else:
-                try:
-                    self._text_item.show()
-                except Exception:
-                    pass
-                try:
-                    if self._bg_item is not None:
-                        self._bg_item.show()
-                except Exception:
-                    pass
+            txt = QtWidgets.QGraphicsSimpleTextItem(str(self._label_text), parent=self)
+            txt.setBrush(QtGui.QBrush(QtGui.QColor(255, 255, 255)))
+            br = txt.boundingRect()
+            pad = 4
+            rect = QtCore.QRectF(
+                br.x() - pad,
+                br.y() - pad,
+                br.width() + pad * 2,
+                br.height() + pad * 2,
+            )
+            bg = QtWidgets.QGraphicsRectItem(rect, parent=self)
+            bg.setBrush(QtGui.QBrush(QtGui.QColor(0, 0, 0, 160)))
+            bg.setZValue(self.zValue() + 1)
+            txt.setZValue(self.zValue() + 2)
+            r = self.rect()
+            # center label over the ellipse
+            txt.setPos(
+                r.x() + r.width() / 2 - br.width() / 2,
+                r.y() + r.height() / 2 - br.height() / 2,
+            )
+            bg.setPos(txt.pos())
+            self._text_item = txt
+            self._bg_item = bg
+        except Exception:
+            self._text_item = None
+            self._bg_item = None
+        try:
+            # ensure brush/pen are set so the item is filled with translucent color
+            brush = QtGui.QBrush(self._color)
+            brush.setStyle(QtCore.Qt.BrushStyle.SolidPattern)
+            self.setBrush(brush)
+            pen = QtGui.QPen(self._color.darker(110))
+            pen.setWidth(2)
+            self.setPen(pen)
         except Exception:
             pass
+
+    def hoverEnterEvent(self, event):
+        # tooltip handled via setToolTip; label is always visible
+        super().hoverEnterEvent(event)
         super().hoverEnterEvent(event)
 
     def hoverLeaveEvent(self, event):
-        try:
-            if self._text_item is not None:
-                self._text_item.hide()
-            if self._bg_item is not None:
-                self._bg_item.hide()
-        except Exception:
-            pass
+        # label is persistent; nothing to hide on leave
+        super().hoverLeaveEvent(event)
         super().hoverLeaveEvent(event)
 
     def paint(self, painter, option, widget=None):
         try:
-            pen = QtGui.QPen(self._color)
+            # draw a translucent fill with a slightly darker outline
+            pen = QtGui.QPen(self._color.darker(110))
             pen.setWidth(2)
             painter.setPen(pen)
             brush = QtGui.QBrush(self._color)
@@ -192,61 +216,56 @@ class HoverPolygon(QtWidgets.QGraphicsPolygonItem):
         super().__init__(polygon, parent)
         self._label_text = text or ""
         self.setAcceptHoverEvents(True)
-        self._text_item = None
-        self._bg_item = None
         self._color = color
-
-    def hoverEnterEvent(self, event):
+        # create label and background centered on polygon
         try:
-            if self._text_item is None:
-                txt = QtWidgets.QGraphicsSimpleTextItem(
-                    str(self._label_text), parent=self
-                )
-                txt.setBrush(QtGui.QBrush(QtGui.QColor(255, 255, 255)))
-                br = txt.boundingRect()
-                pad = 4
-                rect = QtCore.QRectF(
-                    br.x() - pad,
-                    br.y() - pad,
-                    br.width() + pad * 2,
-                    br.height() + pad * 2,
-                )
-                bg = QtWidgets.QGraphicsRectItem(rect, parent=self)
-                bg.setBrush(QtGui.QBrush(QtGui.QColor(0, 0, 0, 160)))
-                bg.setZValue(self.zValue() + 1)
-                txt.setZValue(self.zValue() + 2)
-                r = self.polygon().boundingRect()
-                txt.setPos(r.width() + 6, -(br.height() / 2))
-                bg.setPos(txt.pos())
-                self._text_item = txt
-                self._bg_item = bg
-            else:
-                try:
-                    self._text_item.show()
-                except Exception:
-                    pass
-                try:
-                    if self._bg_item is not None:
-                        self._bg_item.show()
-                except Exception:
-                    pass
+            txt = QtWidgets.QGraphicsSimpleTextItem(str(self._label_text), parent=self)
+            txt.setBrush(QtGui.QBrush(QtGui.QColor(255, 255, 255)))
+            br = txt.boundingRect()
+            pad = 4
+            rect = QtCore.QRectF(
+                br.x() - pad,
+                br.y() - pad,
+                br.width() + pad * 2,
+                br.height() + pad * 2,
+            )
+            bg = QtWidgets.QGraphicsRectItem(rect, parent=self)
+            bg.setBrush(QtGui.QBrush(QtGui.QColor(0, 0, 0, 160)))
+            bg.setZValue(self.zValue() + 1)
+            txt.setZValue(self.zValue() + 2)
+            r = self.polygon().boundingRect()
+            txt.setPos(
+                r.x() + r.width() / 2 - br.width() / 2,
+                r.y() + r.height() / 2 - br.height() / 2,
+            )
+            bg.setPos(txt.pos())
+            self._text_item = txt
+            self._bg_item = bg
+        except Exception:
+            self._text_item = None
+            self._bg_item = None
+        try:
+            brush = QtGui.QBrush(self._color)
+            brush.setStyle(QtCore.Qt.BrushStyle.SolidPattern)
+            self.setBrush(brush)
+            pen = QtGui.QPen(self._color.darker(110))
+            pen.setWidth(2)
+            self.setPen(pen)
         except Exception:
             pass
+
+    def hoverEnterEvent(self, event):
+        # label is persistent; tooltip is provided separately
+        super().hoverEnterEvent(event)
         super().hoverEnterEvent(event)
 
     def hoverLeaveEvent(self, event):
-        try:
-            if self._text_item is not None:
-                self._text_item.hide()
-            if self._bg_item is not None:
-                self._bg_item.hide()
-        except Exception:
-            pass
+        super().hoverLeaveEvent(event)
         super().hoverLeaveEvent(event)
 
     def paint(self, painter, option, widget=None):
         try:
-            pen = QtGui.QPen(self._color)
+            pen = QtGui.QPen(self._color.darker(110))
             pen.setWidth(2)
             painter.setPen(pen)
             brush = QtGui.QBrush(self._color)
@@ -457,12 +476,26 @@ def render_predictions_on_scene(scene: QtWidgets.QGraphicsScene, result):
                             except Exception:
                                 label_text = f"{label_text} {score}"
                         color = color_for_label(label_text)
+                        # prefer class-specific colors when possible
+                        color = _color_for_class(label, fallback_text=label_text)
                         hp = HoverPolygon(poly, text=label_text, color=color)
                         hp.setZValue(20)
                         try:
                             hp.setData(0, "inference_overlay")
                         except Exception:
                             pass
+                        # set tooltip with class and confidence
+                        try:
+                            if score is not None:
+                                sc = float(score)
+                                hp.setToolTip(f"Class: {label}\nConfidence: {sc:.2f}")
+                            else:
+                                hp.setToolTip(f"Class: {label}")
+                        except Exception:
+                            try:
+                                hp.setToolTip(str(label_text))
+                            except Exception:
+                                pass
                         scene.addItem(hp)
                         try:
                             append_log(
@@ -513,6 +546,7 @@ def render_predictions_on_scene(scene: QtWidgets.QGraphicsScene, result):
                         label_text = f"{label_text} {score}"
 
                 color = color_for_label(label_text)
+                color = _color_for_class(label, fallback_text=label_text)
                 he = HoverEllipse(
                     cx_px - r, cy_px - r, r * 2, r * 2, text=label_text, color=color
                 )
@@ -521,6 +555,17 @@ def render_predictions_on_scene(scene: QtWidgets.QGraphicsScene, result):
                     he.setData(0, "inference_overlay")
                 except Exception:
                     pass
+                try:
+                    if score is not None:
+                        sc = float(score)
+                        he.setToolTip(f"Class: {label}\nConfidence: {sc:.2f}")
+                    else:
+                        he.setToolTip(f"Class: {label}")
+                except Exception:
+                    try:
+                        he.setToolTip(str(label_text))
+                    except Exception:
+                        pass
                 scene.addItem(he)
                 try:
                     append_log(
