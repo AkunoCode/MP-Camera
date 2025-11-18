@@ -1,4 +1,10 @@
 from PyQt6 import QtWidgets, QtCore, QtGui
+from threading import Thread
+import traceback
+try:
+    from mpcamera.services.roboflow import RoboflowClient
+except Exception:
+    RoboflowClient = None
 
 
 def _extract_directus_items(obj):
@@ -149,6 +155,98 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
             img_btn = camera_page.findChild(QtWidgets.QPushButton, "imgUploadButton")
             cam_view = camera_page.findChild(QtWidgets.QGraphicsView, "cameraView")
 
+            # Create a simple overlay widget that will be shown on top of the camera view
+            overlay = None
+            class _Spinner(QtWidgets.QWidget):
+                def __init__(self, parent=None, diameter=40, line_width=4, color=QtGui.QColor(255,255,255)):
+                    super().__init__(parent)
+                    self._angle = 0
+                    self._timer = QtCore.QTimer(self)
+                    self._timer.setInterval(16)
+                    self._timer.timeout.connect(self._on_tick)
+                    self._diameter = diameter
+                    self._line_width = line_width
+                    self._color = color
+                    self.setFixedSize(diameter, diameter)
+
+                def _on_tick(self):
+                    self._angle = (self._angle + 8) % 360
+                    self.update()
+
+                def start(self):
+                    if not self._timer.isActive():
+                        self._timer.start()
+
+                def stop(self):
+                    try:
+                        if self._timer.isActive():
+                            self._timer.stop()
+                    except Exception:
+                        pass
+
+                def paintEvent(self, ev):
+                    r = self.rect()
+                    painter = QtGui.QPainter(self)
+                    painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+                    pen = QtGui.QPen(self._color)
+                    pen.setWidth(self._line_width)
+                    pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
+                    painter.setPen(pen)
+                    # draw arc
+                    rect = QtCore.QRectF(self._line_width/2, self._line_width/2, r.width()-self._line_width, r.height()-self._line_width)
+                    start_angle = int(self._angle * 16)
+                    span = int(270 * 16)  # 270 degrees arc
+                    painter.drawArc(rect, start_angle, span)
+            class _ViewportEventFilter(QtCore.QObject):
+                def __init__(self, overlay_widget):
+                    super().__init__()
+                    self._overlay = overlay_widget
+
+                def eventFilter(self, obj, event):
+                    try:
+                        if event.type() == QtCore.QEvent.Type.Resize and self._overlay is not None:
+                            self._overlay.setGeometry(obj.rect())
+                    except Exception:
+                        pass
+                    return super().eventFilter(obj, event)
+
+            def _ensure_overlay():
+                nonlocal overlay
+                try:
+                    if cam_view is None:
+                        return None
+                    vp = cam_view.viewport()
+                    if overlay is None:
+                        overlay = QtWidgets.QWidget(vp)
+                        overlay.setObjectName("camera_loading_overlay")
+                        overlay.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
+                        overlay.setStyleSheet("#camera_loading_overlay { background: rgba(0,0,0,0.5); }")
+                        lay = QtWidgets.QVBoxLayout(overlay)
+                        lay.setContentsMargins(0, 0, 0, 0)
+                        lay.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+                        # place spinner directly on the overlay (no inner rounded rectangle)
+                        v = lay
+                        v.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+                        spinner = _Spinner(overlay, diameter=36, line_width=4)
+                        v.addWidget(spinner, 0, QtCore.Qt.AlignmentFlag.AlignCenter)
+                        # store spinner reference on the overlay so it persists
+                        overlay._spinner = spinner
+                        overlay.setGeometry(vp.rect())
+                        # attach spinner and timer placeholders to overlay to avoid GC
+                        overlay._spinner = spinner
+                        overlay.hide()
+                        # install resize filter so overlay follows the viewport
+                        try:
+                            filt = _ViewportEventFilter(overlay)
+                            vp.installEventFilter(filt)
+                            # keep a reference so it's not GC'd
+                            setattr(vp, "_overlay_event_filter", filt)
+                        except Exception:
+                            pass
+                    return overlay
+                except Exception:
+                    return None
+
             def _show_image_in_view(path: str):
                 try:
                     if not path:
@@ -170,6 +268,69 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
                             cam_view.fitInView(rect, QtCore.Qt.AspectRatioMode.KeepAspectRatio)
                         except Exception:
                             pass
+                    # send to Roboflow inference asynchronously (if service available)
+                    try:
+                        if RoboflowClient is not None:
+                            # show overlay while inference runs
+                            ov = _ensure_overlay()
+                            try:
+                                if ov is not None:
+                                    try:
+                                        if getattr(ov, "_spinner", None) is not None:
+                                            try:
+                                                ov._spinner.start()
+                                            except Exception:
+                                                pass
+                                    except Exception:
+                                        pass
+                                    ov.show()
+                            except Exception:
+                                pass
+
+                            class _OverlayNotifier(QtCore.QObject):
+                                finished = QtCore.pyqtSignal()
+
+                            notifier = _OverlayNotifier()
+                            try:
+                                if ov is not None:
+                                    def _hide_and_stop():
+                                        try:
+                                            if getattr(ov, "_spinner", None) is not None:
+                                                ov._spinner.stop()
+                                        except Exception:
+                                            pass
+                                        try:
+                                            ov.hide()
+                                        except Exception:
+                                            pass
+
+                                    notifier.finished.connect(_hide_and_stop)
+                            except Exception:
+                                pass
+
+                            def _run_inference(p, note):
+                                try:
+                                    client = RoboflowClient.get_default()
+                                    print("roboflow: sending image for inference ->", p)
+                                    res = client.run_workflow(p)
+                                    print("roboflow: inference result:", res)
+                                except Exception:
+                                    print("roboflow: inference failed:\n", traceback.format_exc())
+                                finally:
+                                    try:
+                                        note.finished.emit()
+                                    except Exception:
+                                        # fallback: try hiding overlay on main thread
+                                        try:
+                                            QtCore.QTimer.singleShot(0, lambda: ov.hide() if ov is not None else None)
+                                        except Exception:
+                                            pass
+
+                            Thread(target=_run_inference, args=(path, notifier), daemon=True).start()
+                        else:
+                            print("roboflow: service not available (module missing)")
+                    except Exception:
+                        print("roboflow: failed to start inference thread:\n", traceback.format_exc())
                 except Exception as e:
                     print("camera_page: error showing image in view:", e)
 
