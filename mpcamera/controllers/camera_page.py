@@ -26,6 +26,7 @@ from mpcamera.services.overlays import (
     render_predictions_on_scene,
     show_debug_overlays,
 )
+from mpcamera.services.overlays import ensure_overlay_for_view
 
 
 # Directus and site helpers are provided by `camera_utils` service
@@ -184,114 +185,7 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
             # Create a simple overlay widget that will be shown on top of the camera view
             overlay = None
 
-            class _Spinner(QtWidgets.QWidget):
-                def __init__(
-                    self,
-                    parent=None,
-                    diameter=40,
-                    line_width=4,
-                    color=QtGui.QColor(255, 255, 255),
-                ):
-                    super().__init__(parent)
-                    self._angle = 0
-                    self._timer = QtCore.QTimer(self)
-                    self._timer.setInterval(16)
-                    self._timer.timeout.connect(self._on_tick)
-                    self._diameter = diameter
-                    self._line_width = line_width
-                    self._color = color
-                    self.setFixedSize(diameter, diameter)
-
-                def _on_tick(self):
-                    self._angle = (self._angle + 8) % 360
-                    self.update()
-
-                def start(self):
-                    if not self._timer.isActive():
-                        self._timer.start()
-
-                def stop(self):
-                    try:
-                        if self._timer.isActive():
-                            self._timer.stop()
-                    except Exception:
-                        pass
-
-                def paintEvent(self, ev):
-                    r = self.rect()
-                    painter = QtGui.QPainter(self)
-                    painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
-                    pen = QtGui.QPen(self._color)
-                    pen.setWidth(self._line_width)
-                    pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
-                    painter.setPen(pen)
-                    # draw arc
-                    rect = QtCore.QRectF(
-                        self._line_width / 2,
-                        self._line_width / 2,
-                        r.width() - self._line_width,
-                        r.height() - self._line_width,
-                    )
-                    start_angle = int(self._angle * 16)
-                    span = int(270 * 16)  # 270 degrees arc
-                    painter.drawArc(rect, start_angle, span)
-
-            class _ViewportEventFilter(QtCore.QObject):
-                def __init__(self, overlay_widget):
-                    super().__init__()
-                    self._overlay = overlay_widget
-
-                def eventFilter(self, obj, event):
-                    try:
-                        if (
-                            event.type() == QtCore.QEvent.Type.Resize
-                            and self._overlay is not None
-                        ):
-                            self._overlay.setGeometry(obj.rect())
-                    except Exception:
-                        pass
-                    return super().eventFilter(obj, event)
-
-            def _ensure_overlay():
-                nonlocal overlay
-                try:
-                    if cam_view is None:
-                        return None
-                    vp = cam_view.viewport()
-                    if overlay is None:
-                        overlay = QtWidgets.QWidget(vp)
-                        overlay.setObjectName("camera_loading_overlay")
-                        overlay.setAttribute(
-                            QtCore.Qt.WidgetAttribute.WA_StyledBackground, True
-                        )
-                        overlay.setStyleSheet(
-                            "#camera_loading_overlay { background: rgba(0,0,0,0.5); }"
-                        )
-                        lay = QtWidgets.QVBoxLayout(overlay)
-                        lay.setContentsMargins(0, 0, 0, 0)
-                        lay.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-                        # place spinner directly on the overlay (no inner rounded rectangle)
-                        v = lay
-                        v.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-                        spinner = _Spinner(overlay, diameter=36, line_width=4)
-                        v.addWidget(spinner, 0, QtCore.Qt.AlignmentFlag.AlignCenter)
-                        # store spinner reference on the overlay so it persists
-                        overlay._spinner = spinner
-                        overlay.setGeometry(vp.rect())
-                        # attach spinner and timer placeholders to overlay to avoid GC
-                        overlay._spinner = spinner
-                        overlay.hide()
-                        # install resize filter so overlay follows the viewport
-                        try:
-                            filt = _ViewportEventFilter(overlay)
-                            vp.installEventFilter(filt)
-                            # keep a reference so it's not GC'd
-                            setattr(vp, "_overlay_event_filter", filt)
-                        except Exception:
-                            pass
-                    return overlay
-                except Exception:
-                    return None
+            # overlay creation moved to overlays service: use ensure_overlay_for_view
 
             # use module-level _color_for_label
 
@@ -371,7 +265,7 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
                     try:
                         if RoboflowClient is not None:
                             # show overlay while inference runs
-                            ov = _ensure_overlay()
+                            ov = ensure_overlay_for_view(cam_view)
                             try:
                                 if ov is not None:
                                     try:

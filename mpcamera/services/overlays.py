@@ -7,6 +7,105 @@ from mpcamera.services.prediction_utils import (
 import json
 
 
+class OverlaySpinner(QtWidgets.QWidget):
+    def __init__(self, parent=None, diameter=40, line_width=4, color=QtGui.QColor(255, 255, 255)):
+        super().__init__(parent)
+        self._angle = 0
+        self._timer = QtCore.QTimer(self)
+        self._timer.setInterval(16)
+        self._timer.timeout.connect(self._on_tick)
+        self._diameter = diameter
+        self._line_width = line_width
+        self._color = color
+        self.setFixedSize(diameter, diameter)
+
+    def _on_tick(self):
+        self._angle = (self._angle + 8) % 360
+        self.update()
+
+    def start(self):
+        if not self._timer.isActive():
+            self._timer.start()
+
+    def stop(self):
+        try:
+            if self._timer.isActive():
+                self._timer.stop()
+        except Exception:
+            pass
+
+    def paintEvent(self, ev):
+        r = self.rect()
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        pen = QtGui.QPen(self._color)
+        pen.setWidth(self._line_width)
+        pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
+        rect = QtCore.QRectF(
+            self._line_width / 2,
+            self._line_width / 2,
+            r.width() - self._line_width,
+            r.height() - self._line_width,
+        )
+        start_angle = int(self._angle * 16)
+        span = int(270 * 16)
+        painter.drawArc(rect, start_angle, span)
+
+
+class ViewportEventFilter(QtCore.QObject):
+    def __init__(self, overlay_widget):
+        super().__init__()
+        self._overlay = overlay_widget
+
+    def eventFilter(self, obj, event):
+        try:
+            if event.type() == QtCore.QEvent.Type.Resize and self._overlay is not None:
+                self._overlay.setGeometry(obj.rect())
+        except Exception:
+            pass
+        return super().eventFilter(obj, event)
+
+
+def ensure_overlay_for_view(cam_view: QtWidgets.QGraphicsView):
+    """Create (or return) an overlay widget attached to the view's viewport.
+
+    The overlay will contain a spinner at center and be hidden by default.
+    """
+    try:
+        if cam_view is None:
+            return None
+        vp = cam_view.viewport()
+        if vp is None:
+            return None
+        existing = getattr(vp, "_camera_overlay", None)
+        if existing is not None:
+            return existing
+
+        overlay = QtWidgets.QWidget(vp)
+        overlay.setObjectName("camera_loading_overlay")
+        overlay.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
+        overlay.setStyleSheet("#camera_loading_overlay { background: rgba(0,0,0,0.5); }")
+        lay = QtWidgets.QVBoxLayout(overlay)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        spinner = OverlaySpinner(overlay, diameter=36, line_width=4)
+        lay.addWidget(spinner, 0, QtCore.Qt.AlignmentFlag.AlignCenter)
+        overlay._spinner = spinner
+        overlay.setGeometry(vp.rect())
+        overlay.hide()
+        try:
+            filt = ViewportEventFilter(overlay)
+            vp.installEventFilter(filt)
+            setattr(vp, "_overlay_event_filter", filt)
+        except Exception:
+            pass
+        setattr(vp, "_camera_overlay", overlay)
+        return overlay
+    except Exception:
+        return None
+
+
 class HoverEllipse(QtWidgets.QGraphicsEllipseItem):
     def __init__(
         self, x, y, w, h, text="", parent=None, color=QtGui.QColor(255, 0, 0, 140)
