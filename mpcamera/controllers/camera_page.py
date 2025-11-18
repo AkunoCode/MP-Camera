@@ -1,4 +1,4 @@
-from PyQt6 import QtWidgets, QtCore
+from PyQt6 import QtWidgets, QtCore, QtGui
 
 
 def _extract_directus_items(obj):
@@ -141,6 +141,61 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
                 farm_combo.currentIndexChanged.connect(lambda _: on_farm_changed())
             if soil_combo is not None:
                 soil_combo.currentIndexChanged.connect(lambda _: on_soil_changed())
+        except Exception as e:
+            print("camera_page: failed to connect combo signals:", e)
+
+        # Image upload -> show in QGraphicsView named 'cameraView'
+        try:
+            img_btn = camera_page.findChild(QtWidgets.QPushButton, "imgUploadButton")
+            cam_view = camera_page.findChild(QtWidgets.QGraphicsView, "cameraView")
+
+            def _show_image_in_view(path: str):
+                try:
+                    if not path:
+                        return
+                    pix = QtGui.QPixmap(path)
+                    if pix.isNull():
+                        print("camera_page: failed to load image", path)
+                        return
+                    scene = QtWidgets.QGraphicsScene()
+                    scene.addPixmap(pix)
+                    if cam_view is not None:
+                        cam_view.setScene(scene)
+                        cam_view.setRenderHints(
+                            QtGui.QPainter.RenderHint.SmoothPixmapTransform | QtGui.QPainter.RenderHint.Antialiasing
+                        )
+                        # fit the image into the view while keeping aspect ratio
+                        try:
+                            rect = scene.itemsBoundingRect()
+                            cam_view.fitInView(rect, QtCore.Qt.AspectRatioMode.KeepAspectRatio)
+                        except Exception:
+                            pass
+                except Exception as e:
+                    print("camera_page: error showing image in view:", e)
+
+            def on_img_upload():
+                try:
+                    # ask user for image file
+                    fname, _ = QtWidgets.QFileDialog.getOpenFileName(
+                        camera_page,
+                        "Select image",
+                        "",
+                        "Image Files (*.png *.jpg *.jpeg *.bmp);;All Files (*)",
+                    )
+                    if fname:
+                        _show_image_in_view(fname)
+                except Exception as e:
+                    print("camera_page: img upload failed:", e)
+
+            if img_btn is not None:
+                try:
+                    img_btn.clicked.connect(on_img_upload)
+                except Exception as e:
+                    print("camera_page: failed to connect imgUploadButton:", e)
+            else:
+                print("camera_page: imgUploadButton not found in UI")
+        except Exception as e:
+            print("camera_page: error wiring image upload:", e)
         except Exception as e:
             print("camera_page: failed to connect combo signals:", e)
 
