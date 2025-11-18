@@ -1,9 +1,23 @@
-PyQt5>=5.15.0
-inference-sdk
+## Core GUI (Qt6)
+# Use PyQt6 and the WebEngine package for the embedded web view.
+PyQt6>=6.5.0
+PyQt6-WebEngine>=6.5.0
 
-# Optional: pin versions if you prefer
-# PyQt5==5.15.9
-# inference-sdk==<version>
-opencv-python>=4.5.0
-python-dotenv>=0.21.0
+## Networking / helpers
 requests>=2.28.0
+python-dotenv>=0.21.0
+
+## Image utilities
+opencv-python>=4.7.0
+
+## Inference SDK (optional)
+# The official SDK (import name `inference_sdk`, pip package `inference-sdk`) currently
+# has wheels that target Python <=3.11 / <3.13 for many releases. If you run the
+# application in a Python 3.8–3.11 venv you can install the SDK to use the
+# `RoboflowClient` wrapper directly. Example:
+#
+#   pip install inference-sdk==0.61.0
+#
+# If your Python is 3.12+ (or 3.13) it's often easier to use the HTTP fallback
+# implemented in `mpcamera/services/roboflow.py` (no SDK required) or run the
+# app in a compatible venv.
