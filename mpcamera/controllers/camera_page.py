@@ -33,6 +33,15 @@ import tempfile
 import uuid
 from mpcamera.utils.inference_utils import parse_result_to_preds, compute_aggregates
 from mpcamera.utils.color_utils import get_color_name
+from mpcamera.utils.um_per_pixel import calculate_micrometers_per_pixel
+from mpcamera.utils.morphometrics import (
+    calculate_area_um2,
+    calculate_perimeter_um,
+    calculate_major_axis_um,
+    calculate_minor_axis_um,
+    calculate_equivalent_circular_diameter,
+    calculate_skeleton_length_um,
+)
 
 
 # Directus and site helpers are provided by `camera_utils` service
@@ -959,16 +968,317 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
                                                     inf_table.setItem(r, 2, col_item)
                                                 except Exception:
                                                     pass
-                                                # Size (placeholder)
+                                                # Note: UI no longer has a separate Size column
+                                                # (area is now at column 3). Skip any size placeholder.
+                                                # Morphometrics: Area, Perimeter, Major/Minor axes, ECD, Skeleton
                                                 try:
-                                                    sz = p.get("size")
-                                                    inf_table.setItem(
-                                                        r,
-                                                        3,
-                                                        QtWidgets.QTableWidgetItem(
-                                                            str(sz or "")
-                                                        ),
-                                                    )
+                                                    # determine image pixel dimensions
+                                                    P_width = None
+                                                    P_height = None
+                                                    try:
+                                                        pix_item = None
+                                                        for it in (
+                                                            scene.items()
+                                                            if scene is not None
+                                                            else []
+                                                        ):
+                                                            try:
+                                                                from PyQt6 import (
+                                                                    QtWidgets as _qtw,
+                                                                )
+
+                                                                if isinstance(
+                                                                    it,
+                                                                    _qtw.QGraphicsPixmapItem,
+                                                                ):
+                                                                    pix_item = it
+                                                                    break
+                                                            except Exception:
+                                                                if hasattr(
+                                                                    it, "pixmap"
+                                                                ):
+                                                                    pix_item = it
+                                                                    break
+                                                        if pix_item is not None:
+                                                            try:
+                                                                pm = pix_item.pixmap()
+                                                                P_width = int(
+                                                                    pm.width()
+                                                                )
+                                                                P_height = int(
+                                                                    pm.height()
+                                                                )
+                                                            except Exception:
+                                                                P_width = None
+                                                                P_height = None
+                                                        if (
+                                                            P_width is None
+                                                            and img_np is not None
+                                                        ):
+                                                            try:
+                                                                h, w = img_np.shape[:2]
+                                                                P_width = int(w)
+                                                                P_height = int(h)
+                                                            except Exception:
+                                                                P_width = None
+                                                                P_height = None
+                                                    except Exception:
+                                                        P_width = None
+                                                        P_height = None
+
+                                                    # read magnification from UI spinbox
+                                                    try:
+                                                        mag_w = camera_page.findChild(
+                                                            QtWidgets.QDoubleSpinBox,
+                                                            "magnificationSpinbox",
+                                                        )
+                                                        M_total = (
+                                                            float(mag_w.value())
+                                                            if mag_w is not None
+                                                            else 1.0
+                                                        )
+                                                    except Exception:
+                                                        M_total = 1.0
+
+                                                    # if image dims available, compute μm/pixel
+                                                    um_per_px = None
+                                                    try:
+                                                        if (
+                                                            P_width
+                                                            and P_height
+                                                            and M_total
+                                                            and M_total > 0
+                                                        ):
+                                                            res_um = calculate_micrometers_per_pixel(
+                                                                M_total,
+                                                                P_width,
+                                                                P_height,
+                                                            )
+                                                            um_per_px = float(
+                                                                res_um.get(
+                                                                    "average_multiplier_um",
+                                                                    0,
+                                                                )
+                                                            )
+                                                    except Exception:
+                                                        um_per_px = None
+
+                                                    # extract polygon points (pixels)
+                                                    pts = []
+                                                    try:
+                                                        pts = p.get("points") or []
+                                                        if not pts:
+                                                            try:
+                                                                raw = p.get("raw") or {}
+                                                                pts = (
+                                                                    extract_points_from_prediction(
+                                                                        raw
+                                                                    )
+                                                                    or []
+                                                                )
+                                                            except Exception:
+                                                                pts = []
+                                                    except Exception:
+                                                        pts = []
+
+                                                    if (
+                                                        pts
+                                                        and len(pts) >= 3
+                                                        and um_per_px is not None
+                                                    ):
+                                                        try:
+                                                            arr = np.array(
+                                                                pts, dtype=float
+                                                            )
+                                                            # polygon area (px^2) via shoelace
+                                                            x = arr[:, 0]
+                                                            y = arr[:, 1]
+                                                            area_px = 0.5 * abs(
+                                                                np.dot(
+                                                                    x, np.roll(y, -1)
+                                                                )
+                                                                - np.dot(
+                                                                    y, np.roll(x, -1)
+                                                                )
+                                                            )
+                                                            # perimeter (px)
+                                                            diffs = np.diff(
+                                                                arr,
+                                                                axis=0,
+                                                                append=arr[:1],
+                                                            )
+                                                            seglens = np.hypot(
+                                                                diffs[:, 0], diffs[:, 1]
+                                                            )
+                                                            perim_px = float(
+                                                                np.sum(seglens)
+                                                            )
+                                                            # PCA for major/minor axis lengths (px)
+                                                            try:
+                                                                c = arr.mean(axis=0)
+                                                                pts_centered = arr - c
+                                                                cov = np.cov(
+                                                                    pts_centered.T
+                                                                )
+                                                                evals, evecs = (
+                                                                    np.linalg.eigh(cov)
+                                                                )
+                                                                # sort descending
+                                                                order = np.argsort(
+                                                                    evals
+                                                                )[::-1]
+                                                                evecs = evecs[:, order]
+                                                                v1 = evecs[:, 0]
+                                                                v2 = evecs[:, 1]
+                                                                proj1 = (
+                                                                    pts_centered.dot(v1)
+                                                                )
+                                                                proj2 = (
+                                                                    pts_centered.dot(v2)
+                                                                )
+                                                                major_px = float(
+                                                                    proj1.max()
+                                                                    - proj1.min()
+                                                                )
+                                                                minor_px = float(
+                                                                    proj2.max()
+                                                                    - proj2.min()
+                                                                )
+                                                            except Exception:
+                                                                major_px = 0.0
+                                                                minor_px = 0.0
+
+                                                            # convert to μm using morphometrics helpers
+                                                            try:
+                                                                A_um2 = (
+                                                                    calculate_area_um2(
+                                                                        area_px,
+                                                                        um_per_px,
+                                                                    )
+                                                                )
+                                                            except Exception:
+                                                                A_um2 = None
+                                                            try:
+                                                                P_um = calculate_perimeter_um(
+                                                                    perim_px, um_per_px
+                                                                )
+                                                            except Exception:
+                                                                P_um = None
+                                                            try:
+                                                                Lmaj_um = calculate_major_axis_um(
+                                                                    major_px, um_per_px
+                                                                )
+                                                            except Exception:
+                                                                Lmaj_um = None
+                                                            try:
+                                                                Lmin_um = calculate_minor_axis_um(
+                                                                    minor_px, um_per_px
+                                                                )
+                                                            except Exception:
+                                                                Lmin_um = None
+                                                            try:
+                                                                Deq = calculate_equivalent_circular_diameter(
+                                                                    (
+                                                                        A_um2
+                                                                        if A_um2
+                                                                        is not None
+                                                                        else 0.0
+                                                                    ),
+                                                                    um_per_px,
+                                                                )
+                                                            except Exception:
+                                                                Deq = None
+                                                            try:
+                                                                Lsk_um = calculate_skeleton_length_um(
+                                                                    major_px, um_per_px
+                                                                )
+                                                            except Exception:
+                                                                Lsk_um = None
+
+                                                            # set table cells (columns: 3..8)
+                                                            try:
+                                                                inf_table.setItem(
+                                                                    r,
+                                                                    3,
+                                                                    QtWidgets.QTableWidgetItem(
+                                                                        f"{A_um2:.2f}"
+                                                                        if A_um2
+                                                                        is not None
+                                                                        else ""
+                                                                    ),
+                                                                )
+                                                            except Exception:
+                                                                pass
+                                                            try:
+                                                                inf_table.setItem(
+                                                                    r,
+                                                                    4,
+                                                                    QtWidgets.QTableWidgetItem(
+                                                                        f"{P_um:.2f}"
+                                                                        if P_um
+                                                                        is not None
+                                                                        else ""
+                                                                    ),
+                                                                )
+                                                            except Exception:
+                                                                pass
+                                                            try:
+                                                                inf_table.setItem(
+                                                                    r,
+                                                                    5,
+                                                                    QtWidgets.QTableWidgetItem(
+                                                                        f"{Lmaj_um:.2f}"
+                                                                        if Lmaj_um
+                                                                        is not None
+                                                                        else ""
+                                                                    ),
+                                                                )
+                                                            except Exception:
+                                                                pass
+                                                            try:
+                                                                inf_table.setItem(
+                                                                    r,
+                                                                    6,
+                                                                    QtWidgets.QTableWidgetItem(
+                                                                        f"{Lmin_um:.2f}"
+                                                                        if Lmin_um
+                                                                        is not None
+                                                                        else ""
+                                                                    ),
+                                                                )
+                                                            except Exception:
+                                                                pass
+                                                            try:
+                                                                inf_table.setItem(
+                                                                    r,
+                                                                    7,
+                                                                    QtWidgets.QTableWidgetItem(
+                                                                        f"{Deq:.2f}"
+                                                                        if Deq
+                                                                        is not None
+                                                                        else ""
+                                                                    ),
+                                                                )
+                                                            except Exception:
+                                                                pass
+                                                            try:
+                                                                inf_table.setItem(
+                                                                    r,
+                                                                    8,
+                                                                    QtWidgets.QTableWidgetItem(
+                                                                        f"{Lsk_um:.2f}"
+                                                                        if Lsk_um
+                                                                        is not None
+                                                                        else ""
+                                                                    ),
+                                                                )
+                                                            except Exception:
+                                                                pass
+                                                        except Exception:
+                                                            pass
+                                                    else:
+                                                        # if no polygon or missing um conversion, leave blank
+                                                        pass
                                                 except Exception:
                                                     pass
                                     except Exception:
@@ -1486,13 +1796,268 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
                                         )
                                     except Exception:
                                         pass
+                                    # Size column removed from UI; do not write placeholder
+                                    # Morphometrics for streaming results (same approach as uploaded image)
                                     try:
-                                        sz = p.get("size")
-                                        inf_table.setItem(
-                                            r,
-                                            3,
-                                            QtWidgets.QTableWidgetItem(str(sz or "")),
-                                        )
+                                        # determine image pixel dimensions
+                                        P_width = None
+                                        P_height = None
+                                        try:
+                                            pix_item = None
+                                            for it in (
+                                                scene.items()
+                                                if scene is not None
+                                                else []
+                                            ):
+                                                try:
+                                                    from PyQt6 import QtWidgets as _qtw
+
+                                                    if isinstance(
+                                                        it, _qtw.QGraphicsPixmapItem
+                                                    ):
+                                                        pix_item = it
+                                                        break
+                                                except Exception:
+                                                    if hasattr(it, "pixmap"):
+                                                        pix_item = it
+                                                        break
+                                            if pix_item is not None:
+                                                try:
+                                                    pm = pix_item.pixmap()
+                                                    P_width = int(pm.width())
+                                                    P_height = int(pm.height())
+                                                except Exception:
+                                                    P_width = None
+                                                    P_height = None
+                                            if P_width is None:
+                                                pix = getattr(
+                                                    camera_page, "_last_pixmap", None
+                                                )
+                                                if pix is not None:
+                                                    try:
+                                                        P_width = int(pix.width())
+                                                        P_height = int(pix.height())
+                                                    except Exception:
+                                                        P_width = None
+                                                        P_height = None
+                                        except Exception:
+                                            P_width = None
+                                            P_height = None
+
+                                        # magnification
+                                        try:
+                                            mag_w = camera_page.findChild(
+                                                QtWidgets.QDoubleSpinBox,
+                                                "magnificationSpinbox",
+                                            )
+                                            M_total = (
+                                                float(mag_w.value())
+                                                if mag_w is not None
+                                                else 1.0
+                                            )
+                                        except Exception:
+                                            M_total = 1.0
+
+                                        um_per_px = None
+                                        try:
+                                            if (
+                                                P_width
+                                                and P_height
+                                                and M_total
+                                                and M_total > 0
+                                            ):
+                                                res_um = (
+                                                    calculate_micrometers_per_pixel(
+                                                        M_total, P_width, P_height
+                                                    )
+                                                )
+                                                um_per_px = float(
+                                                    res_um.get(
+                                                        "average_multiplier_um", 0
+                                                    )
+                                                )
+                                        except Exception:
+                                            um_per_px = None
+
+                                        # points
+                                        pts = []
+                                        try:
+                                            pts = p.get("points") or []
+                                            if not pts:
+                                                try:
+                                                    raw = p.get("raw") or {}
+                                                    pts = (
+                                                        extract_points_from_prediction(
+                                                            raw
+                                                        )
+                                                        or []
+                                                    )
+                                                except Exception:
+                                                    pts = []
+                                        except Exception:
+                                            pts = []
+
+                                        if (
+                                            pts
+                                            and len(pts) >= 3
+                                            and um_per_px is not None
+                                        ):
+                                            try:
+                                                arr = np.array(pts, dtype=float)
+                                                x = arr[:, 0]
+                                                y = arr[:, 1]
+                                                area_px = 0.5 * abs(
+                                                    np.dot(x, np.roll(y, -1))
+                                                    - np.dot(y, np.roll(x, -1))
+                                                )
+                                                diffs = np.diff(
+                                                    arr, axis=0, append=arr[:1]
+                                                )
+                                                seglens = np.hypot(
+                                                    diffs[:, 0], diffs[:, 1]
+                                                )
+                                                perim_px = float(np.sum(seglens))
+                                                try:
+                                                    c = arr.mean(axis=0)
+                                                    pts_centered = arr - c
+                                                    cov = np.cov(pts_centered.T)
+                                                    evals, evecs = np.linalg.eigh(cov)
+                                                    order = np.argsort(evals)[::-1]
+                                                    evecs = evecs[:, order]
+                                                    v1 = evecs[:, 0]
+                                                    v2 = evecs[:, 1]
+                                                    proj1 = pts_centered.dot(v1)
+                                                    proj2 = pts_centered.dot(v2)
+                                                    major_px = float(
+                                                        proj1.max() - proj1.min()
+                                                    )
+                                                    minor_px = float(
+                                                        proj2.max() - proj2.min()
+                                                    )
+                                                except Exception:
+                                                    major_px = 0.0
+                                                    minor_px = 0.0
+
+                                                try:
+                                                    A_um2 = calculate_area_um2(
+                                                        area_px, um_per_px
+                                                    )
+                                                except Exception:
+                                                    A_um2 = None
+                                                try:
+                                                    P_um = calculate_perimeter_um(
+                                                        perim_px, um_per_px
+                                                    )
+                                                except Exception:
+                                                    P_um = None
+                                                try:
+                                                    Lmaj_um = calculate_major_axis_um(
+                                                        major_px, um_per_px
+                                                    )
+                                                except Exception:
+                                                    Lmaj_um = None
+                                                try:
+                                                    Lmin_um = calculate_minor_axis_um(
+                                                        minor_px, um_per_px
+                                                    )
+                                                except Exception:
+                                                    Lmin_um = None
+                                                try:
+                                                    Deq = calculate_equivalent_circular_diameter(
+                                                        (
+                                                            A_um2
+                                                            if A_um2 is not None
+                                                            else 0.0
+                                                        ),
+                                                        um_per_px,
+                                                    )
+                                                except Exception:
+                                                    Deq = None
+                                                try:
+                                                    Lsk_um = (
+                                                        calculate_skeleton_length_um(
+                                                            major_px, um_per_px
+                                                        )
+                                                    )
+                                                except Exception:
+                                                    Lsk_um = None
+
+                                                try:
+                                                    inf_table.setItem(
+                                                        r,
+                                                        3,
+                                                        QtWidgets.QTableWidgetItem(
+                                                            f"{A_um2:.2f}"
+                                                            if A_um2 is not None
+                                                            else ""
+                                                        ),
+                                                    )
+                                                except Exception:
+                                                    pass
+                                                try:
+                                                    inf_table.setItem(
+                                                        r,
+                                                        4,
+                                                        QtWidgets.QTableWidgetItem(
+                                                            f"{P_um:.2f}"
+                                                            if P_um is not None
+                                                            else ""
+                                                        ),
+                                                    )
+                                                except Exception:
+                                                    pass
+                                                try:
+                                                    inf_table.setItem(
+                                                        r,
+                                                        5,
+                                                        QtWidgets.QTableWidgetItem(
+                                                            f"{Lmaj_um:.2f}"
+                                                            if Lmaj_um is not None
+                                                            else ""
+                                                        ),
+                                                    )
+                                                except Exception:
+                                                    pass
+                                                try:
+                                                    inf_table.setItem(
+                                                        r,
+                                                        6,
+                                                        QtWidgets.QTableWidgetItem(
+                                                            f"{Lmin_um:.2f}"
+                                                            if Lmin_um is not None
+                                                            else ""
+                                                        ),
+                                                    )
+                                                except Exception:
+                                                    pass
+                                                try:
+                                                    inf_table.setItem(
+                                                        r,
+                                                        7,
+                                                        QtWidgets.QTableWidgetItem(
+                                                            f"{Deq:.2f}"
+                                                            if Deq is not None
+                                                            else ""
+                                                        ),
+                                                    )
+                                                except Exception:
+                                                    pass
+                                                try:
+                                                    inf_table.setItem(
+                                                        r,
+                                                        8,
+                                                        QtWidgets.QTableWidgetItem(
+                                                            f"{Lsk_um:.2f}"
+                                                            if Lsk_um is not None
+                                                            else ""
+                                                        ),
+                                                    )
+                                                except Exception:
+                                                    pass
+                                            except Exception:
+                                                pass
+                                        else:
+                                            pass
                                     except Exception:
                                         pass
                         except Exception:

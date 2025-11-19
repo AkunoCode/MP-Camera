@@ -1371,11 +1371,6 @@ background-color:none;
            </column>
            <column>
             <property name="text">
-             <string>Size</string>
-            </property>
-           </column>
-           <column>
-            <property name="text">
              <string>Area</string>
             </property>
            </column>
@@ -1401,7 +1396,7 @@ background-color:none;
            </column>
            <column>
             <property name="text">
-             <string>Sekeleton Length</string>
+             <string>Skeleton Length</string>
             </property>
            </column>
           </widget>
