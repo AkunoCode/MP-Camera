@@ -11,3 +11,6 @@ __pycache__/
 
 # OS files
 .DS_Store
+
+# Models - because they can be large and are often regenerated
+models/
