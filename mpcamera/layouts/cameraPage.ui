@@ -89,7 +89,7 @@ QPushButton:disabled {
     border: 1px solid #c0c0c0;
 }
 
-QPushButton[designClass="lightButton"]:disabled {
+QPushButton[designClass=&quot;lightButton&quot;]:disabled {
     background-color: #f5f5f5;
     color: #9a9a9a;
     border: 1px solid #d0d0d0;
@@ -349,7 +349,7 @@ color:black;
          <item>
           <layout class="QHBoxLayout" name="horizontalLayout_4">
            <item>
-            <layout class="QVBoxLayout" name="modelCombo">
+            <layout class="QVBoxLayout" name="model">
              <property name="spacing">
               <number>0</number>
              </property>
@@ -372,7 +372,7 @@ color:gray;
               </widget>
              </item>
              <item>
-              <widget class="QComboBox" name="sourceCombo_2">
+              <widget class="QComboBox" name="modelCombo">
                <property name="minimumSize">
                 <size>
                  <width>0</width>

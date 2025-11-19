@@ -170,6 +170,190 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
         try:
             img_btn = camera_page.findChild(QtWidgets.QPushButton, "imgUploadButton")
             cam_view = camera_page.findChild(QtWidgets.QGraphicsView, "cameraView")
+            # model selection combo (choose Roboflow workflow)
+            model_combo = camera_page.findChild(QtWidgets.QComboBox, "modelCombo")
+            try:
+                # list of (display_name, workflow_id)
+                _model_workflows = [
+                    ("YOLOv11", "detect-count-and-visualize-2"),
+                    ("RF-DETR-SEG", "detect-count-and-visualize"),
+                ]
+                if model_combo is not None:
+                    model_combo.blockSignals(True)
+                    model_combo.clear()
+                    for disp, wf in _model_workflows:
+                        try:
+                            model_combo.addItem(disp, wf)
+                        except Exception:
+                            try:
+                                # fallback: add without data
+                                model_combo.addItem(disp)
+                            except Exception:
+                                pass
+
+                    # try to select currently-configured workflow from RoboflowClient
+                    try:
+                        current_wf = None
+                        if RoboflowClient is not None:
+                            try:
+                                current_wf = RoboflowClient.get_default().workflow
+                            except Exception:
+                                current_wf = None
+                        if current_wf:
+                            sel_idx = -1
+                            for i in range(model_combo.count()):
+                                try:
+                                    if model_combo.itemData(i) == current_wf:
+                                        sel_idx = i
+                                        break
+                                except Exception:
+                                    pass
+                            try:
+                                if sel_idx != -1:
+                                    model_combo.setCurrentIndex(sel_idx)
+                                else:
+                                    model_combo.setCurrentIndex(0)
+                            except Exception:
+                                pass
+                        else:
+                            try:
+                                model_combo.setCurrentIndex(0)
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+                    model_combo.blockSignals(False)
+
+                    # connect selection change to update the Roboflow workflow used
+                    try:
+                        def _on_model_changed(idx):
+                            try:
+                                wf = None
+                                try:
+                                    wf = model_combo.itemData(idx)
+                                except Exception:
+                                    wf = None
+                                if wf is None:
+                                    return
+                                if RoboflowClient is not None:
+                                    try:
+                                        RoboflowClient.get_default().workflow = wf
+                                        print("camera_page: Roboflow workflow set to", wf)
+                                    except Exception:
+                                        pass
+
+                                # If there's an image or stream active, trigger an immediate inference
+                                try:
+                                    scene = cam_view.scene() if cam_view is not None else None
+                                    has_scene = scene is not None and len(scene.items()) > 0
+                                except Exception:
+                                    has_scene = False
+
+                                try:
+                                    streaming = getattr(camera_page, "_streaming", False)
+                                    # prepare pixmap (prefer last_pixmap when streaming)
+                                    pix = None
+                                    if streaming:
+                                        pix = getattr(camera_page, "_last_pixmap", None)
+                                    if pix is None and has_scene:
+                                        try:
+                                            for it in scene.items():
+                                                try:
+                                                    from PyQt6 import QtWidgets as _qtw
+
+                                                    if isinstance(
+                                                        it, _qtw.QGraphicsPixmapItem
+                                                    ):
+                                                        pix = it.pixmap()
+                                                        break
+                                                except Exception:
+                                                    try:
+                                                        if hasattr(it, "pixmap"):
+                                                            pix = it.pixmap()
+                                                            break
+                                                    except Exception:
+                                                        pass
+                                        except Exception:
+                                            pix = None
+
+                                    if pix is None:
+                                        return
+
+                                    # write pix to temp file
+                                    tmp_path = None
+                                    try:
+                                        tmp = tempfile.NamedTemporaryFile(
+                                            delete=False, suffix=".jpg"
+                                        )
+                                        tmp_path = tmp.name
+                                        tmp.close()
+                                        try:
+                                            pix.save(tmp_path, "JPG")
+                                        except Exception:
+                                            try:
+                                                qm = pix.toImage()
+                                                qm.save(tmp_path, "JPG")
+                                            except Exception:
+                                                pass
+                                    except Exception:
+                                        tmp_path = None
+
+                                    if tmp_path is None:
+                                        return
+
+                                    # show overlay/spinner
+                                    ov = ensure_overlay_for_view(cam_view)
+                                    try:
+                                        if ov is not None:
+                                            try:
+                                                if getattr(ov, "_spinner", None) is not None:
+                                                    try:
+                                                        ov._spinner.start()
+                                                    except Exception:
+                                                        pass
+                                            except Exception:
+                                                pass
+                                            ov.show()
+                                    except Exception:
+                                        pass
+
+                                    # reuse streaming inference path (notifier + thread)
+                                    try:
+                                        setattr(camera_page, "_inference_running", True)
+                                        notifier = _StreamNotifier()
+                                        notifier.finished.connect(
+                                            lambda res, p: (
+                                                _handle_stream_inference_result(res, p),
+                                                setattr(
+                                                    camera_page, "_inference_running", False
+                                                ),
+                                                # hide spinner/overlay if present
+                                                (ov._spinner.stop() if getattr(ov, "_spinner", None) is not None else None),
+                                                (ov.hide() if ov is not None else None),
+                                            )
+                                        )
+                                        Thread(
+                                            target=_run_inference_thread,
+                                            args=(tmp_path, notifier),
+                                            daemon=True,
+                                        ).start()
+                                    except Exception:
+                                        try:
+                                            if tmp_path and os.path.exists(tmp_path):
+                                                os.remove(tmp_path)
+                                        except Exception:
+                                            pass
+                                        setattr(camera_page, "_inference_running", False)
+                                except Exception:
+                                    pass
+                            except Exception:
+                                pass
+
+                        model_combo.currentIndexChanged.connect(_on_model_changed)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
             # replace designer QGraphicsView with ZoomableGraphicsView at runtime
             try:
                 from mpcamera.ui.zoomable_view import ZoomableGraphicsView
@@ -1025,6 +1209,8 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
                         ),
                         camera_page.findChild(QtWidgets.QComboBox, "sourceCombo"),
                         camera_page.findChild(QtWidgets.QComboBox, "sourceCombo_2"),
+                        # include model selection combo if present
+                        model_combo,
                         farm_combo,
                         soil_combo,
                         camera_page.findChild(QtWidgets.QTableWidget, "inferenceTable"),

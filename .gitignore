@@ -14,3 +14,5 @@ __pycache__/
 
 # Models - because they can be large and are often regenerated
 models/
+
+prediction_debug.txt
