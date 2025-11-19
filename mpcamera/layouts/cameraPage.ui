@@ -131,7 +131,26 @@ QDoubleSpinBox QAbstractItemView {
     selection-background-color: #e6f2ff;
 }
 
+/*-----------------LINE EDIT----------------------------*/
 
+QLineEdit {
+    background-color: #ffffff;
+    border: 1px solid #d0d0d0;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 13px;
+    color: #333333;
+    selection-background-color: #cce4ff;  /* light blue text highlight */
+}
+
+QLineEdit:hover {
+    border: 1px solid #a0a0a0;
+}
+
+QLineEdit:focus {
+    border: 1px solid #0078d4; /* same focus blue as combobox */
+    outline: none;
+}
 </string>
   </property>
   <widget class="QWidget" name="widget" native="true">
