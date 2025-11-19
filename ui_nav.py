@@ -179,6 +179,34 @@ class MainWindow(QtWidgets.QMainWindow):
                 )
         except Exception as e:
             print("Error setting up farmPage UI:", e)
+        # If a separate samplePage.ui exists, load it into the placeholder page
+        try:
+            sample_ui_path = os.path.join(
+                os.path.dirname(__file__), "mpcamera", "layouts", "samplePage.ui"
+            )
+            samples_page = self.findChild(QtWidgets.QWidget, "samplesPage")
+            if samples_page is not None and os.path.exists(sample_ui_path):
+                print("Loading samplePage UI from:", sample_ui_path)
+                try:
+                    uic.loadUi(sample_ui_path, samples_page)
+                except Exception as e:
+                    print("Failed to load samplePage.ui into placeholder:", e)
+                try:
+                    from mpcamera.controllers import samples_page as samples_page_module
+
+                    try:
+                        samples_page_module.setup(samples_page, self)
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+            else:
+                print(
+                    "samplesPage placeholder not found or samplePage.ui missing at:",
+                    sample_ui_path,
+                )
+        except Exception as e:
+            print("Error setting up samplesPage UI:", e)
         # If a separate chartPage.ui exists, load it into the placeholder page
         # chart page removed: we intentionally do not load chartPage.ui
         # start fetching Directus data in background so pages can populate

@@ -79,6 +79,10 @@ def setup(farm_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
         items = _get_sites_list()
         if farms_table is None:
             return
+        try:
+            farms_table.setSortingEnabled(False)
+        except Exception:
+            pass
         farms_table.setRowCount(0)
         practices = set()
         for s in items:
@@ -120,6 +124,10 @@ def setup(farm_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
 
         try:
             farms_table.resizeColumnsToContents()
+        except Exception:
+            pass
+        try:
+            farms_table.setSortingEnabled(True)
         except Exception:
             pass
 

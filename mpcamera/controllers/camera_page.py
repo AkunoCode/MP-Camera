@@ -601,6 +601,10 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
                                             except Exception:
                                                 overlay_index_map = {}
 
+                                            try:
+                                                inf_table.setSortingEnabled(False)
+                                            except Exception:
+                                                pass
                                             inf_table.setRowCount(0)
                                             for p in preds:
                                                 r = inf_table.rowCount()

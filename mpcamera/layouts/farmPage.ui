@@ -387,6 +387,15 @@ color:black;
          </item>
          <item>
           <widget class="QTableWidget" name="farmsTable">
+           <attribute name="horizontalHeaderMinimumSectionSize">
+            <number>170</number>
+           </attribute>
+           <attribute name="horizontalHeaderDefaultSectionSize">
+            <number>170</number>
+           </attribute>
+           <attribute name="horizontalHeaderShowSortIndicator" stdset="0">
+            <bool>true</bool>
+           </attribute>
            <column>
             <property name="text">
              <string>Practice</string>
