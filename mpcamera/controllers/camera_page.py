@@ -29,6 +29,8 @@ from mpcamera.ui.overlays import (
     show_debug_overlays,
 )
 from mpcamera.ui.overlays import ensure_overlay_for_view
+import tempfile
+import uuid
 from mpcamera.utils.inference_utils import parse_result_to_preds, compute_aggregates
 from mpcamera.utils.color_utils import get_color_name
 
@@ -274,6 +276,15 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
                             )
                         except Exception:
                             pass
+
+                    # Update button states after showing an image so
+                    # clear/upload/capture buttons reflect the new scene.
+                    try:
+                        # `update_buttons` is defined later in this scope but
+                        # will be available by the time this function is invoked.
+                        update_buttons()
+                    except Exception:
+                        pass
 
                     # If the Roboflow service isn't available at runtime, draw some debug overlays
                     # so the developer can verify the drawing code and translucent fill.
@@ -1089,15 +1100,56 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
                     try:
                         if cam_view is None:
                             return
-                        scene = QtWidgets.QGraphicsScene()
-                        scene.addPixmap(pix)
-                        cam_view.setScene(scene)
+                        # try to reuse existing scene and pixmap item so overlays stay on top
+                        scene = cam_view.scene()
+                        pix_item = None
+                        if scene is not None:
+                            try:
+                                for it in scene.items():
+                                    try:
+                                        from PyQt6 import QtWidgets as _qtw
+
+                                        if isinstance(it, _qtw.QGraphicsPixmapItem):
+                                            pix_item = it
+                                            break
+                                    except Exception:
+                                        if hasattr(it, "pixmap"):
+                                            pix_item = it
+                                            break
+                            except Exception:
+                                pix_item = None
+
+                        if scene is None:
+                            scene = QtWidgets.QGraphicsScene()
+                            pix_item = scene.addPixmap(pix)
+                            cam_view.setScene(scene)
+                        else:
+                            if pix_item is None:
+                                try:
+                                    pix_item = scene.addPixmap(pix)
+                                except Exception:
+                                    scene.clear()
+                                    pix_item = scene.addPixmap(pix)
+                            else:
+                                try:
+                                    pix_item.setPixmap(pix)
+                                except Exception:
+                                    try:
+                                        scene.removeItem(pix_item)
+                                    except Exception:
+                                        pass
+                                    pix_item = scene.addPixmap(pix)
+
                         cam_view.setRenderHints(
                             QtGui.QPainter.RenderHint.SmoothPixmapTransform
                             | QtGui.QPainter.RenderHint.Antialiasing
                         )
                         try:
-                            rect = scene.itemsBoundingRect()
+                            rect = (
+                                pix_item.boundingRect()
+                                if pix_item is not None
+                                else scene.itemsBoundingRect()
+                            )
                             cam_view.fitInView(
                                 rect, QtCore.Qt.AspectRatioMode.KeepAspectRatio
                             )
@@ -1140,6 +1192,229 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
                     except Exception:
                         pass
 
+                # --- Streaming inference support ---
+                # avoid overlapping inference runs
+                setattr(camera_page, "_inference_running", False)
+                setattr(camera_page, "_inference_timer", None)
+
+                def _handle_stream_inference_result(result, tmp_path=None):
+                    try:
+                        # remove temporary file
+                        try:
+                            if tmp_path and os.path.exists(tmp_path):
+                                os.remove(tmp_path)
+                        except Exception:
+                            pass
+
+                        # If there's no view or scene, nothing to render
+                        scene = cam_view.scene() if cam_view is not None else None
+                        if scene is None:
+                            return
+
+                        # draw overlays
+                        try:
+                            render_predictions_on_scene(scene, result)
+                        except Exception:
+                            pass
+
+                        # update inference table and counters using existing logic
+                        try:
+                            preds = parse_result_to_preds(result)
+                        except Exception:
+                            preds = []
+
+                        try:
+                            inf_table = camera_page.findChild(
+                                QtWidgets.QTableWidget, "inferenceTable"
+                            )
+                            if inf_table is not None:
+                                inf_table.setRowCount(0)
+                                # re-use some of the logic used for uploaded images
+                                for p in preds:
+                                    r = inf_table.rowCount()
+                                    inf_table.insertRow(r)
+                                    try:
+                                        label_item = QtWidgets.QTableWidgetItem(
+                                            str(p.get("label") or "")
+                                        )
+                                        assigned_key = None
+                                        try:
+                                            assigned_key = p.get(
+                                                "detection_id"
+                                            ) or p.get("id")
+                                        except Exception:
+                                            assigned_key = None
+                                        if assigned_key is None:
+                                            try:
+                                                assigned_key = json.dumps(
+                                                    p, sort_keys=True, default=str
+                                                )
+                                            except Exception:
+                                                assigned_key = str(p)
+                                        try:
+                                            label_item.setData(
+                                                QtCore.Qt.ItemDataRole.UserRole,
+                                                assigned_key,
+                                            )
+                                        except Exception:
+                                            pass
+                                        inf_table.setItem(r, 0, label_item)
+                                    except Exception:
+                                        pass
+                                    try:
+                                        sc = p.get("score")
+                                        sc_text = (
+                                            f"{float(sc):.2f}" if sc is not None else ""
+                                        )
+                                        inf_table.setItem(
+                                            r, 1, QtWidgets.QTableWidgetItem(sc_text)
+                                        )
+                                    except Exception:
+                                        pass
+                                    try:
+                                        inf_table.setItem(
+                                            r, 2, QtWidgets.QTableWidgetItem("")
+                                        )
+                                    except Exception:
+                                        pass
+                                    try:
+                                        sz = p.get("size")
+                                        inf_table.setItem(
+                                            r,
+                                            3,
+                                            QtWidgets.QTableWidgetItem(str(sz or "")),
+                                        )
+                                    except Exception:
+                                        pass
+                        except Exception:
+                            pass
+
+                        # aggregates
+                        try:
+                            ag = compute_aggregates(preds)
+
+                            def _set_lbl(name, val):
+                                try:
+                                    lbl = camera_page.findChild(QtWidgets.QLabel, name)
+                                    if lbl is not None:
+                                        lbl.setText(str(val))
+                                except Exception:
+                                    pass
+
+                            _set_lbl("totalCount", ag.get("total", 0))
+                            ave = ag.get("ave_confidence")
+                            _set_lbl(
+                                "aveConfidence",
+                                f"{ave:.2f}" if ave is not None else "0.00",
+                            )
+                            cnts = ag.get("counts", {})
+                            _set_lbl("fragmentsCount", cnts.get("fragment", 0))
+                            _set_lbl("sheetsCount", cnts.get("sheet", 0))
+                            _set_lbl("fibersCount", cnts.get("fiber", 0))
+                            _set_lbl("foamsCount", cnts.get("foam", 0))
+                            _set_lbl("filmsCount", cnts.get("film", 0))
+                            _set_lbl("beadsCount", cnts.get("bead", 0))
+                        except Exception:
+                            pass
+
+                    except Exception:
+                        pass
+
+                class _StreamNotifier(QtCore.QObject):
+                    finished = QtCore.pyqtSignal(object, str)
+
+                def _run_inference_thread(tmp_path, note: _StreamNotifier):
+                    res = None
+                    try:
+                        client = (
+                            RoboflowClient.get_default()
+                            if RoboflowClient is not None
+                            else None
+                        )
+                        if client is None:
+                            res = None
+                        else:
+                            res = client.run_workflow(tmp_path)
+                    except Exception:
+                        try:
+                            print(
+                                "roboflow: inference failed (stream):",
+                                traceback.format_exc(),
+                            )
+                        except Exception:
+                            pass
+                    finally:
+                        try:
+                            note.finished.emit(res, tmp_path)
+                        except Exception:
+                            # fallback: schedule handler on main thread
+                            try:
+                                QtCore.QTimer.singleShot(
+                                    0,
+                                    lambda: _handle_stream_inference_result(
+                                        res, tmp_path
+                                    ),
+                                )
+                            except Exception:
+                                pass
+
+                def _maybe_run_stream_inference():
+                    try:
+                        if not getattr(camera_page, "_streaming", False):
+                            return
+                        if getattr(camera_page, "_pause_updates", False):
+                            return
+                        if getattr(camera_page, "_inference_running", False):
+                            return
+                        pix = getattr(camera_page, "_last_pixmap", None)
+                        if pix is None:
+                            return
+                        # write pix to temp file
+                        try:
+                            tmp = tempfile.NamedTemporaryFile(
+                                delete=False, suffix=".jpg"
+                            )
+                            tmp_path = tmp.name
+                            tmp.close()
+                            # save pixmap
+                            try:
+                                pix.save(tmp_path, "JPG")
+                            except Exception:
+                                # fallback: use unique filename and QImage save
+                                try:
+                                    qm = pix.toImage()
+                                    qm.save(tmp_path, "JPG")
+                                except Exception:
+                                    pass
+                        except Exception:
+                            tmp_path = None
+                        if tmp_path is None:
+                            return
+                        # run inference in background
+                        try:
+                            setattr(camera_page, "_inference_running", True)
+                            notifier = _StreamNotifier()
+                            notifier.finished.connect(
+                                lambda res, p: (
+                                    _handle_stream_inference_result(res, p),
+                                    setattr(camera_page, "_inference_running", False),
+                                )
+                            )
+                            Thread(
+                                target=_run_inference_thread,
+                                args=(tmp_path, notifier),
+                                daemon=True,
+                            ).start()
+                        except Exception:
+                            try:
+                                if tmp_path and os.path.exists(tmp_path):
+                                    os.remove(tmp_path)
+                            except Exception:
+                                pass
+                            setattr(camera_page, "_inference_running", False)
+                    except Exception:
+                        pass
+
                 def start_camera():
                     try:
                         if getattr(camera_page, "_streaming", False):
@@ -1170,6 +1445,16 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
                         setattr(camera_page, "_streaming", True)
                         setattr(camera_page, "_pause_updates", False)
                         update_buttons()
+                        # start streaming inference timer at a conservative rate (1s)
+                        try:
+                            if getattr(camera_page, "_inference_timer", None) is None:
+                                inf_timer = QtCore.QTimer(camera_page)
+                                inf_timer.setInterval(1000)
+                                inf_timer.timeout.connect(_maybe_run_stream_inference)
+                                inf_timer.start()
+                                setattr(camera_page, "_inference_timer", inf_timer)
+                        except Exception:
+                            pass
                     except Exception:
                         pass
 
@@ -1201,15 +1486,37 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
                             pass
                         setattr(camera_page, "_streaming", False)
                         setattr(camera_page, "_pause_updates", False)
+                        # stop inference timer and mark not running
+                        try:
+                            it = getattr(camera_page, "_inference_timer", None)
+                            if it is not None:
+                                try:
+                                    it.stop()
+                                except Exception:
+                                    pass
+                                setattr(camera_page, "_inference_timer", None)
+                        except Exception:
+                            pass
+                        try:
+                            setattr(camera_page, "_inference_running", False)
+                        except Exception:
+                            pass
                         # when stopping the camera completely, also clear overlays and inference state
                         try:
-                            # clear overlays
-                            if cam_view is not None and cam_view.scene() is not None:
-                                for it in list(cam_view.scene().items()):
-                                    try:
-                                        cam_view.scene().removeItem(it)
-                                    except Exception:
-                                        pass
+                            # reuse existing clear routine to remove scene, table rows and counters
+                            try:
+                                clear_image_and_inference()
+                            except Exception:
+                                # fallback: clear overlays manually
+                                if (
+                                    cam_view is not None
+                                    and cam_view.scene() is not None
+                                ):
+                                    for it in list(cam_view.scene().items()):
+                                        try:
+                                            cam_view.scene().removeItem(it)
+                                        except Exception:
+                                            pass
                         except Exception:
                             pass
                         # update buttons

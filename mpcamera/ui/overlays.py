@@ -486,16 +486,43 @@ def render_predictions_on_scene(scene: QtWidgets.QGraphicsScene, result):
         img_w = pix.width()
         img_h = pix.height()
 
-        # remove previous inference overlays
+        # ensure there is a dedicated inference overlay group on the scene
         try:
-            for it in list(scene.items()):
+            grp = getattr(scene, "_inference_group", None)
+            if grp is None:
+                grp = QtWidgets.QGraphicsItemGroup()
+                # keep overlays above most other items
                 try:
-                    if it.data(0) == "inference_overlay":
-                        scene.removeItem(it)
+                    grp.setZValue(20)
+                except Exception:
+                    pass
+                try:
+                    scene.addItem(grp)
+                except Exception:
+                    pass
+                try:
+                    setattr(scene, "_inference_group", grp)
+                except Exception:
+                    pass
+            else:
+                # clear existing group children
+                try:
+                    for child in list(grp.childItems()):
+                        try:
+                            try:
+                                grp.removeFromGroup(child)
+                            except Exception:
+                                pass
+                            try:
+                                scene.removeItem(child)
+                            except Exception:
+                                pass
+                        except Exception:
+                            pass
                 except Exception:
                     pass
         except Exception:
-            pass
+            grp = None
 
         preds = find_predictions(result)
         # flatten wrappers similar to previous controller logic
@@ -675,7 +702,17 @@ def render_predictions_on_scene(scene: QtWidgets.QGraphicsScene, result):
                                 hp.setToolTip(str(label_text))
                             except Exception:
                                 pass
-                        scene.addItem(hp)
+                        # add overlay to dedicated group when possible
+                        try:
+                            if grp is not None:
+                                grp.addToGroup(hp)
+                            else:
+                                scene.addItem(hp)
+                        except Exception:
+                            try:
+                                scene.addItem(hp)
+                            except Exception:
+                                pass
                         try:
                             append_log(
                                 "ADDED POLYGON: "
@@ -765,7 +802,16 @@ def render_predictions_on_scene(scene: QtWidgets.QGraphicsScene, result):
                         he.setToolTip(str(label_text))
                     except Exception:
                         pass
-                scene.addItem(he)
+                        try:
+                            if grp is not None:
+                                grp.addToGroup(he)
+                            else:
+                                scene.addItem(he)
+                        except Exception:
+                            try:
+                                scene.addItem(he)
+                            except Exception:
+                                pass
                 try:
                     append_log(
                         f"ADDED OVERLAY: {label_text} at ({cx_px:.1f},{cy_px:.1f})"
