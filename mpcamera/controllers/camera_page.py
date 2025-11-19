@@ -226,6 +226,7 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
 
                     # connect selection change to update the Roboflow workflow used
                     try:
+
                         def _on_model_changed(idx):
                             try:
                                 wf = None
@@ -238,19 +239,29 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
                                 if RoboflowClient is not None:
                                     try:
                                         RoboflowClient.get_default().workflow = wf
-                                        print("camera_page: Roboflow workflow set to", wf)
+                                        print(
+                                            "camera_page: Roboflow workflow set to", wf
+                                        )
                                     except Exception:
                                         pass
 
                                 # If there's an image or stream active, trigger an immediate inference
                                 try:
-                                    scene = cam_view.scene() if cam_view is not None else None
-                                    has_scene = scene is not None and len(scene.items()) > 0
+                                    scene = (
+                                        cam_view.scene()
+                                        if cam_view is not None
+                                        else None
+                                    )
+                                    has_scene = (
+                                        scene is not None and len(scene.items()) > 0
+                                    )
                                 except Exception:
                                     has_scene = False
 
                                 try:
-                                    streaming = getattr(camera_page, "_streaming", False)
+                                    streaming = getattr(
+                                        camera_page, "_streaming", False
+                                    )
                                     # prepare pixmap (prefer last_pixmap when streaming)
                                     pix = None
                                     if streaming:
@@ -306,7 +317,10 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
                                     try:
                                         if ov is not None:
                                             try:
-                                                if getattr(ov, "_spinner", None) is not None:
+                                                if (
+                                                    getattr(ov, "_spinner", None)
+                                                    is not None
+                                                ):
                                                     try:
                                                         ov._spinner.start()
                                                     except Exception:
@@ -325,10 +339,17 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
                                             lambda res, p: (
                                                 _handle_stream_inference_result(res, p),
                                                 setattr(
-                                                    camera_page, "_inference_running", False
+                                                    camera_page,
+                                                    "_inference_running",
+                                                    False,
                                                 ),
                                                 # hide spinner/overlay if present
-                                                (ov._spinner.stop() if getattr(ov, "_spinner", None) is not None else None),
+                                                (
+                                                    ov._spinner.stop()
+                                                    if getattr(ov, "_spinner", None)
+                                                    is not None
+                                                    else None
+                                                ),
                                                 (ov.hide() if ov is not None else None),
                                             )
                                         )
@@ -343,7 +364,9 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
                                                 os.remove(tmp_path)
                                         except Exception:
                                             pass
-                                        setattr(camera_page, "_inference_running", False)
+                                        setattr(
+                                            camera_page, "_inference_running", False
+                                        )
                                 except Exception:
                                     pass
                             except Exception:
