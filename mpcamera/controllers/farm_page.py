@@ -61,40 +61,27 @@ def setup(farm_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
         def _get_sites_list():
             try:
                 if main_window is None:
+                    return []
+                sites = []
+                try:
+                    sites = main_window.get_sites() or []
+                except Exception:
+                    sites = []
+                # if wrapped in {'data': [...]}
+                if isinstance(sites, dict) and "data" in sites:
                     try:
-                        if practice_input is not None:
-                            practice_val = (
-                                s.get("cultivation_practice")
-                                or s.get("practice")
-                                or s.get("farm_practice")
-                                or None
-                            )
-                            if practice_val is not None:
-                                pval = str(practice_val)
-                                p_lower = pval.lower()
-                                try:
-                                    idx = practice_input.findData(p_lower)
-                                except Exception:
-                                    idx = -1
-                                if idx is not None and idx >= 0:
-                                    practice_input.setCurrentIndex(idx)
-                                else:
-                                    # if not present, add it with lowercase data and Title Case display
-                                    try:
-                                        practice_input.addItem(pval.title(), p_lower)
-                                        practice_input.setCurrentIndex(
-                                            practice_input.count() - 1
-                                        )
-                                    except Exception:
-                                        try:
-                                            practice_input.addItem(pval)
-                                            practice_input.setCurrentIndex(
-                                                practice_input.count() - 1
-                                            )
-                                        except Exception:
-                                            pass
+                        return sites.get("data") or []
                     except Exception:
-                        pass
+                        return []
+                if isinstance(sites, list):
+                    return sites
+                return []
+            except Exception:
+                return []
+
+        def populate_table():
+            try:
+                items = _get_sites_list()
                 if farms_table is None:
                     return
                 farms_table.setRowCount(0)
@@ -157,18 +144,10 @@ def setup(farm_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
                     if practice_combo is not None:
                         practice_combo.blockSignals(True)
                         practice_combo.clear()
-                        # keep a blank first option (no associated data)
+                        # keep a blank first option
                         practice_combo.addItem("")
                         for p in sorted(practices):
-                            try:
-                                disp = str(p).title()
-                                data = str(p).lower()
-                                practice_combo.addItem(disp, data)
-                            except Exception:
-                                try:
-                                    practice_combo.addItem(str(p))
-                                except Exception:
-                                    pass
+                            practice_combo.addItem(str(p))
                         practice_combo.blockSignals(False)
                 except Exception:
                     pass
@@ -432,65 +411,6 @@ def setup(farm_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
                 search_input.textChanged.connect(on_search_change)
             except Exception:
                 pass
-
-        # practice filter: supports either QComboBox (select) or QLineEdit (type-to-filter)
-        try:
-            practice_filter = farm_page.findChild(
-                QtWidgets.QComboBox, "practiceComboSearch"
-            ) or farm_page.findChild(QtWidgets.QLineEdit, "practiceComboSearch")
-
-            def on_practice_filter_change(val=None):
-                try:
-                    if farms_table is None:
-                        return
-                    # determine filter text
-                    txt = ""
-                    if isinstance(practice_filter, QtWidgets.QComboBox):
-                        try:
-                            # prefer stored data (lowercase) if available
-                            data = practice_filter.currentData()
-                            if data is None:
-                                txt = (
-                                    (practice_filter.currentText() or "")
-                                    .strip()
-                                    .lower()
-                                )
-                            else:
-                                txt = str(data).strip().lower()
-                        except Exception:
-                            txt = (practice_filter.currentText() or "").strip().lower()
-                    else:
-                        # QLineEdit
-                        txt = (practice_filter.text() or "").strip().lower()
-
-                    for r in range(farms_table.rowCount()):
-                        try:
-                            item = farms_table.item(r, 0)
-                            if item is None:
-                                farms_table.setRowHidden(r, False)
-                                continue
-                            practice_val = (item.text() or "").strip().lower()
-                            # if txt empty -> show, else show rows containing txt
-                            farms_table.setRowHidden(
-                                r, bool(txt) and (txt not in practice_val)
-                            )
-                        except Exception:
-                            pass
-                except Exception:
-                    pass
-
-            if practice_filter is not None:
-                try:
-                    if isinstance(practice_filter, QtWidgets.QComboBox):
-                        practice_filter.currentIndexChanged.connect(
-                            on_practice_filter_change
-                        )
-                    else:
-                        practice_filter.textChanged.connect(on_practice_filter_change)
-                except Exception:
-                    pass
-        except Exception:
-            pass
 
         # refresh when dataLoaded called on main window
         try:
