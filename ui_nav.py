@@ -244,6 +244,15 @@ class MainWindow(QtWidgets.QMainWindow):
                             sw.setCurrentIndex(int(idx))
                         except Exception:
                             pass
+                    # If the Farm page was selected, refresh Directus data so pages stay up-to-date
+                    try:
+                        if nav_name == "farmNavButton":
+                            try:
+                                self._start_directus_fetch()
+                            except Exception as e:
+                                print("Failed to refresh Directus on nav change:", e)
+                    except Exception:
+                        pass
 
             # reset all frames to UNSELECTED
             for frame_name in [
