@@ -981,6 +981,341 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
                     print("camera_page: failed to connect imgUploadButton:", e)
             else:
                 print("camera_page: imgUploadButton not found in UI")
+            # --- Camera control, capture, and clearing logic ---
+            try:
+                cam_btn = camera_page.findChild(
+                    QtWidgets.QPushButton, "cameraControlButton"
+                )
+                cap_btn = camera_page.findChild(QtWidgets.QPushButton, "captureButton")
+                clear_btn = camera_page.findChild(
+                    QtWidgets.QPushButton, "clearImgButton"
+                )
+
+                # internal state on the camera_page widget
+                # _vc: cv2.VideoCapture or None
+                # _frame_timer: QTimer for grabbing frames
+                # _streaming: bool
+                # _pause_updates: bool (when a capture has frozen the view)
+                setattr(camera_page, "_vc", None)
+                setattr(camera_page, "_frame_timer", None)
+                setattr(camera_page, "_streaming", False)
+                setattr(camera_page, "_pause_updates", False)
+
+                # Ensure interactive controls show a pointing-hand cursor
+                try:
+                    hand = QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+                    widgets_to_cursor = [
+                        cam_btn,
+                        cap_btn,
+                        clear_btn,
+                        img_btn,
+                        camera_page.findChild(
+                            QtWidgets.QPushButton, "saveResultButton"
+                        ),
+                        camera_page.findChild(QtWidgets.QComboBox, "sourceCombo"),
+                        camera_page.findChild(QtWidgets.QComboBox, "sourceCombo_2"),
+                        farm_combo,
+                        soil_combo,
+                        camera_page.findChild(QtWidgets.QTableWidget, "inferenceTable"),
+                    ]
+                    for w in widgets_to_cursor:
+                        try:
+                            if w is not None:
+                                w.setCursor(hand)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+
+                def update_buttons():
+                    streaming = getattr(camera_page, "_streaming", False)
+                    paused = getattr(camera_page, "_pause_updates", False)
+                    # has image in view?
+                    has_scene = False
+                    try:
+                        has_scene = (
+                            cam_view is not None
+                            and cam_view.scene() is not None
+                            and len(cam_view.scene().items()) > 0
+                        )
+                    except Exception:
+                        has_scene = False
+
+                    # clearImgButton: enabled only when there is an image and camera not streaming
+                    try:
+                        if clear_btn is not None:
+                            clear_btn.setEnabled((not streaming) and has_scene)
+                    except Exception:
+                        pass
+
+                    # imgUploadButton: disabled while streaming
+                    try:
+                        if img_btn is not None:
+                            img_btn.setEnabled(not streaming)
+                    except Exception:
+                        pass
+
+                    # captureButton: enabled only during active camera stream
+                    try:
+                        if cap_btn is not None:
+                            cap_btn.setEnabled(bool(streaming))
+                            # update capture button label depending on paused state
+                            if streaming and getattr(
+                                camera_page, "_pause_updates", False
+                            ):
+                                cap_btn.setText("Resume Capture")
+                            elif streaming:
+                                cap_btn.setText("Freeze Capture")
+                            else:
+                                # default label when not streaming
+                                cap_btn.setText("Capture Frame")
+                    except Exception:
+                        pass
+
+                    # cameraControlButton text update
+                    try:
+                        if cam_btn is not None:
+                            try:
+                                if streaming:
+                                    cam_btn.setText("Stop Camera")
+                                else:
+                                    cam_btn.setText("Start Camera")
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+
+                def _show_pixmap_in_view(pix: QtGui.QPixmap):
+                    try:
+                        if cam_view is None:
+                            return
+                        scene = QtWidgets.QGraphicsScene()
+                        scene.addPixmap(pix)
+                        cam_view.setScene(scene)
+                        cam_view.setRenderHints(
+                            QtGui.QPainter.RenderHint.SmoothPixmapTransform
+                            | QtGui.QPainter.RenderHint.Antialiasing
+                        )
+                        try:
+                            rect = scene.itemsBoundingRect()
+                            cam_view.fitInView(
+                                rect, QtCore.Qt.AspectRatioMode.KeepAspectRatio
+                            )
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
+
+                def _grab_frame_and_show():
+                    try:
+                        vc = getattr(camera_page, "_vc", None)
+                        if vc is None:
+                            return
+                        ok, frame = vc.read()
+                        if not ok or frame is None:
+                            return
+                        # convert BGR -> RGB
+                        try:
+                            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                        except Exception:
+                            frame_rgb = frame[:, :, ::-1]
+                        h, w = frame_rgb.shape[:2]
+                        bytes_per_line = 3 * w
+                        qimg = QtGui.QImage(
+                            frame_rgb.data,
+                            w,
+                            h,
+                            bytes_per_line,
+                            QtGui.QImage.Format.Format_RGB888,
+                        )
+                        pix = QtGui.QPixmap.fromImage(qimg)
+                        # store last frame
+                        try:
+                            setattr(camera_page, "_last_pixmap", pix)
+                        except Exception:
+                            pass
+                        # only update view when not paused
+                        if not getattr(camera_page, "_pause_updates", False):
+                            _show_pixmap_in_view(pix)
+                    except Exception:
+                        pass
+
+                def start_camera():
+                    try:
+                        if getattr(camera_page, "_streaming", False):
+                            return
+                        # try to open default webcam
+                        try:
+                            vc = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+                        except Exception:
+                            try:
+                                vc = cv2.VideoCapture(0)
+                            except Exception:
+                                vc = None
+                        if vc is None or not getattr(vc, "isOpened", lambda: False)():
+                            try:
+                                if vc is not None:
+                                    vc.release()
+                            except Exception:
+                                pass
+                            print("camera_page: failed to open webcam")
+                            return
+                        setattr(camera_page, "_vc", vc)
+                        # timer for grabbing frames
+                        timer = QtCore.QTimer(camera_page)
+                        timer.setInterval(33)
+                        timer.timeout.connect(_grab_frame_and_show)
+                        timer.start()
+                        setattr(camera_page, "_frame_timer", timer)
+                        setattr(camera_page, "_streaming", True)
+                        setattr(camera_page, "_pause_updates", False)
+                        update_buttons()
+                    except Exception:
+                        pass
+
+                def stop_camera():
+                    try:
+                        # stop timer
+                        try:
+                            t = getattr(camera_page, "_frame_timer", None)
+                            if t is not None:
+                                t.stop()
+                        except Exception:
+                            pass
+                        # release capture
+                        try:
+                            vc = getattr(camera_page, "_vc", None)
+                            if vc is not None:
+                                try:
+                                    vc.release()
+                                except Exception:
+                                    pass
+                                setattr(camera_page, "_vc", None)
+                        except Exception:
+                            pass
+                        # clear the view entirely (no frozen frame)
+                        try:
+                            if cam_view is not None:
+                                cam_view.setScene(QtWidgets.QGraphicsScene())
+                        except Exception:
+                            pass
+                        setattr(camera_page, "_streaming", False)
+                        setattr(camera_page, "_pause_updates", False)
+                        # when stopping the camera completely, also clear overlays and inference state
+                        try:
+                            # clear overlays
+                            if cam_view is not None and cam_view.scene() is not None:
+                                for it in list(cam_view.scene().items()):
+                                    try:
+                                        cam_view.scene().removeItem(it)
+                                    except Exception:
+                                        pass
+                        except Exception:
+                            pass
+                        # update buttons
+                        update_buttons()
+                    except Exception:
+                        pass
+
+                def on_camera_control_clicked():
+                    try:
+                        if getattr(camera_page, "_streaming", False):
+                            stop_camera()
+                        else:
+                            start_camera()
+                    except Exception:
+                        pass
+
+                def on_capture_clicked():
+                    try:
+                        # Only allow capture during streaming
+                        if not getattr(camera_page, "_streaming", False):
+                            return
+                        # toggle pause state
+                        paused = getattr(camera_page, "_pause_updates", False)
+                        new_paused = not bool(paused)
+                        setattr(camera_page, "_pause_updates", new_paused)
+                        # if pausing now, ensure last pixmap is stored/shown
+                        try:
+                            if new_paused:
+                                pix = getattr(camera_page, "_last_pixmap", None)
+                                if pix is not None and cam_view is not None:
+                                    _show_pixmap_in_view(pix)
+                            else:
+                                # unpaused: let the next timer tick refresh the view
+                                pass
+                        except Exception:
+                            pass
+                        update_buttons()
+                    except Exception:
+                        pass
+
+                def clear_image_and_inference():
+                    try:
+                        # clear camera view
+                        try:
+                            if cam_view is not None:
+                                cam_view.setScene(QtWidgets.QGraphicsScene())
+                        except Exception:
+                            pass
+                        # clear inference table
+                        try:
+                            inf_table = camera_page.findChild(
+                                QtWidgets.QTableWidget, "inferenceTable"
+                            )
+                            if inf_table is not None:
+                                inf_table.setRowCount(0)
+                        except Exception:
+                            pass
+                        # clear inference cards / counters
+                        try:
+                            labels = [
+                                "totalCount",
+                                "aveConfidence",
+                                "fragmentsCount",
+                                "sheetsCount",
+                                "fibersCount",
+                                "foamsCount",
+                                "filmsCount",
+                                "beadsCount",
+                            ]
+                            for name in labels:
+                                try:
+                                    lbl = camera_page.findChild(QtWidgets.QLabel, name)
+                                    if lbl is not None:
+                                        lbl.setText("")
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
+                        # reset captured/paused state
+                        setattr(camera_page, "_pause_updates", False)
+                        setattr(camera_page, "_last_pixmap", None)
+                        update_buttons()
+                    except Exception:
+                        pass
+
+                # wire buttons
+                try:
+                    if cam_btn is not None:
+                        cam_btn.clicked.connect(on_camera_control_clicked)
+                except Exception:
+                    pass
+                try:
+                    if cap_btn is not None:
+                        cap_btn.clicked.connect(on_capture_clicked)
+                except Exception:
+                    pass
+                try:
+                    if clear_btn is not None:
+                        clear_btn.clicked.connect(clear_image_and_inference)
+                except Exception:
+                    pass
+
+                # initialize button states based on not-streaming
+                update_buttons()
+            except Exception as e:
+                print("camera_page: error wiring camera controls:", e)
         except Exception as e:
             print("camera_page: error wiring image upload:", e)
 
