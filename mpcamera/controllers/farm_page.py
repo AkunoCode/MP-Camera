@@ -1,927 +1,563 @@
-from PyQt6 import QtWidgets, QtCore
+from PyQt6 import QtWidgets, QtCore, QtGui
 import json
-from threading import Thread
 import traceback
+from threading import Thread
+from typing import Optional, Dict, List, Any
 
+# --- Safe Service Imports ---
 try:
     from mpcamera.services.directus import DirectusClient
-except Exception:
+except ImportError:
     DirectusClient = None
 
-from PyQt6 import QtWidgets, QtCore
-import json
-from threading import Thread
-import traceback
 
-try:
-    from mpcamera.services.directus import DirectusClient
-except Exception:
-    DirectusClient = None
+class WorkerSignals(QtCore.QObject):
+    """Signals for background API tasks."""
+
+    success = QtCore.pyqtSignal(str, object)  # action_type, response_data
+    error = QtCore.pyqtSignal(str)
+
+
+class FarmPageController(QtCore.QObject):
+    """
+    Controller to manage the Farm Page UI, including the Table (List)
+    and the Form (Create/Update).
+    """
+
+    def __init__(
+        self, farm_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow
+    ):
+        super().__init__()
+        self.page = farm_page
+        self.main_window = main_window
+        self.signals = WorkerSignals()
+
+        # 1. Locate Widgets
+        self.ui = self._find_ui_elements()
+
+        # 2. Init UI State
+        self._init_table_behavior()
+        self._setup_connections()
+
+        # 3. Initial Data Load
+        self.populate_table()
+
+        # 4. Listen for global refreshes
+        if hasattr(self.main_window, "dataLoaded"):
+            self.main_window.dataLoaded.connect(self.populate_table)
+
+    def _find_ui_elements(self) -> Dict[str, Any]:
+        """Locate and cache all UI widgets."""
+        ui = {
+            # Search / Table
+            "table": self.page.findChild(QtWidgets.QTableWidget, "farmsTable"),
+            "search_input": self.page.findChild(QtWidgets.QLineEdit, "farmNameSearch"),
+            "practice_filter": self.page.findChild(
+                QtWidgets.QComboBox, "practiceComboSearch"
+            ),
+            # Form Inputs
+            "farm_name": self.page.findChild(QtWidgets.QLineEdit, "farmNameInput"),
+            "owner_name": self.page.findChild(QtWidgets.QLineEdit, "ownerNameInput"),
+            "address": self.page.findChild(QtWidgets.QLineEdit, "addressInput"),
+            "long_spin": self.page.findChild(QtWidgets.QDoubleSpinBox, "longInput"),
+            "lat_spin": self.page.findChild(QtWidgets.QDoubleSpinBox, "latInput"),
+            "land_area": self.page.findChild(QtWidgets.QDoubleSpinBox, "landAreaInput"),
+            "water_group": self.page.findChild(QtWidgets.QGroupBox, "waterSourceGroup"),
+            "plastic_group": self.page.findChild(
+                QtWidgets.QGroupBox, "plasticActGroup"
+            ),
+            "soil_combo": self.page.findChild(QtWidgets.QComboBox, "soilTextureCombo"),
+            "crops_input": self.page.findChild(QtWidgets.QLineEdit, "cropsInput"),
+            "practice_combo": self.page.findChild(QtWidgets.QComboBox, "practiceCombo"),
+            "remarks": self.page.findChild(QtWidgets.QTextEdit, "remarksText"),
+            # Actions
+            "create_btn": self.page.findChild(QtWidgets.QPushButton, "createRecord"),
+            "update_btn": self.page.findChild(QtWidgets.QPushButton, "updateRecord"),
+        }
+
+        # Log missing important widgets
+        missing = [k for k, v in ui.items() if v is None]
+        if missing:
+            print(f"FarmPageController Warning: Missing widgets: {missing}")
+
+        return ui
+
+    def _init_table_behavior(self):
+        """Configure table selection and headers."""
+        table = self.ui["table"]
+        if not table:
+            return
+
+        table.setSelectionBehavior(
+            QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        table.setSelectionMode(
+            QtWidgets.QAbstractItemView.SelectionMode.SingleSelection
+        )
+        table.setColumnCount(max(3, table.columnCount()))
+        table.setHorizontalHeaderLabels(["Practice", "Farm Name", "Address"])
+        table.horizontalHeader().setStretchLastSection(True)
+
+    def _setup_connections(self):
+        """Wire signals."""
+        # Table Selection
+        if self.ui["table"]:
+            self.ui["table"].selectionModel().selectionChanged.connect(
+                self._on_selection_changed
+            )
+
+        # Search Filters
+        if self.ui["search_input"]:
+            self.ui["search_input"].textChanged.connect(self._apply_filters)
+        if self.ui["practice_filter"]:
+            self.ui["practice_filter"].currentTextChanged.connect(self._apply_filters)
+
+        # CRUD Buttons
+        if self.ui["create_btn"]:
+            self.ui["create_btn"].clicked.connect(
+                lambda: self._save_record(mode="create")
+            )
+        if self.ui["update_btn"]:
+            self.ui["update_btn"].clicked.connect(
+                lambda: self._save_record(mode="update")
+            )
+
+        # Worker Signals
+        self.signals.success.connect(self._on_worker_success)
+        self.signals.error.connect(self._on_worker_error)
+
+    # ================= DATA & TABLE LOGIC =================
+
+    def populate_table(self):
+        """Fetch sites and render table."""
+        table = self.ui["table"]
+        if not table:
+            return
+
+        # Fetch data safely
+        sites = []
+        if self.main_window and hasattr(self.main_window, "get_sites"):
+            raw = self.main_window.get_sites() or []
+            sites = (
+                raw.get("data", [])
+                if isinstance(raw, dict)
+                else (raw if isinstance(raw, list) else [])
+            )
+
+        table.setSortingEnabled(False)
+        table.setRowCount(0)
+
+        practices_found = set()
+
+        for s in sites:
+            row = table.rowCount()
+            table.insertRow(row)
+
+            # Extract Data
+            practice = self._get_str(
+                s, ["cultivation_practice", "practice", "farm_practice"]
+            )
+            name = self._get_str(s, ["site_name", "name", "title"])
+            addr = self._get_str(s, ["address", "location"])
+
+            if practice:
+                practices_found.add(practice)
+
+            # Create Items
+            item_prac = QtWidgets.QTableWidgetItem(practice)
+            item_name = QtWidgets.QTableWidgetItem(name)
+            item_addr = QtWidgets.QTableWidgetItem(addr)
+
+            # Store full object in the Name column
+            item_name.setData(
+                QtCore.Qt.ItemDataRole.UserRole, json.dumps(s, default=str)
+            )
+
+            table.setItem(row, 0, item_prac)
+            table.setItem(row, 1, item_name)
+            table.setItem(row, 2, item_addr)
+
+        table.resizeColumnsToContents()
+        table.setSortingEnabled(True)
+
+        self._update_combos(practices_found)
+        self._apply_filters()  # Re-apply any existing search terms
+
+    def _update_combos(self, practices: set):
+        """Update both the form combo and the search filter combo."""
+        sorted_practices = sorted(list(practices))
+
+        # Update Form Combo
+        cb = self.ui["practice_combo"]
+        if cb:
+            cb.blockSignals(True)
+            cb.clear()
+            cb.addItem("")
+            cb.addItems(sorted_practices)
+            cb.blockSignals(False)
+
+        # Update Filter Combo
+        cb_search = self.ui["practice_filter"]
+        if cb_search:
+            current = cb_search.currentText()
+            cb_search.blockSignals(True)
+            cb_search.clear()
+            cb_search.addItem("")  # All
+            cb_search.addItems(sorted_practices)
+            cb_search.setCurrentText(current)  # Restore selection
+            cb_search.blockSignals(False)
+
+    def _apply_filters(self):
+        """Filter table rows based on Search Input and Practice Combo."""
+        table = self.ui["table"]
+        if not table:
+            return
+
+        txt_name = (
+            self.ui["search_input"].text().lower().strip()
+            if self.ui["search_input"]
+            else ""
+        )
+        txt_prac = (
+            self.ui["practice_filter"].currentText().lower().strip()
+            if self.ui["practice_filter"]
+            else ""
+        )
+
+        for r in range(table.rowCount()):
+            # Col 1 is Name, Col 0 is Practice
+            it_prac = table.item(r, 0)
+            it_name = table.item(r, 1)
+
+            val_prac = it_prac.text().lower() if it_prac else ""
+            val_name = it_name.text().lower() if it_name else ""
+
+            match_name = txt_name in val_name
+            match_prac = txt_prac in val_prac if txt_prac else True
+
+            table.setRowHidden(r, not (match_name and match_prac))
+
+    # ================= FORM LOGIC =================
+
+    def _on_selection_changed(self):
+        """Handle row selection: fill form and toggle buttons."""
+        table = self.ui["table"]
+        if not table:
+            return
+
+        selected_rows = table.selectionModel().selectedRows()
+
+        if selected_rows:
+            # Row Selected: Load Data
+            idx = selected_rows[0].row()
+            item = table.item(idx, 1)
+            if item:
+                try:
+                    data = json.loads(item.data(QtCore.Qt.ItemDataRole.UserRole))
+                    self._fill_form(data)
+                    self._toggle_buttons(mode="edit")
+                except Exception:
+                    self._fill_form({})
+        else:
+            # No Selection: Clear Data
+            self._fill_form({})
+            self._toggle_buttons(mode="create")
+
+    def _fill_form(self, data: Dict):
+        """Populate form widgets from data dictionary."""
+        if not data:
+            data = {}
+        u = self.ui
+
+        # Text Fields
+        if u["farm_name"]:
+            u["farm_name"].setText(self._get_str(data, ["site_name", "name", "title"]))
+        if u["owner_name"]:
+            u["owner_name"].setText(self._get_str(data, ["owner", "contact"]))
+        if u["address"]:
+            u["address"].setText(self._get_str(data, ["address", "location"]))
+
+        # Spin Boxes
+        self._set_spin(u["long_spin"], data, ["longitude", "lon", "lng"])
+        self._set_spin(u["lat_spin"], data, ["latitude", "lat"])
+        self._set_spin(u["land_area"], data, ["area_ha", "land_area"])
+
+        # Combos
+        self._set_combo(
+            u["soil_combo"], self._get_str(data, ["soil_type", "soil_texture"])
+        )
+        self._set_combo(
+            u["practice_combo"],
+            self._get_str(data, ["cultivation_practice", "practice"]),
+        )
+
+        # Crops (List to comma-string)
+        crops = data.get("crops", "")
+        if isinstance(crops, list):
+            crops = ", ".join([str(c) for c in crops])
+        if u["crops_input"]:
+            u["crops_input"].setText(str(crops))
+
+        # Checkbox Groups
+        self._set_checkbox_group(u["water_group"], data, ["water_source", "water"])
+        self._set_checkbox_group(
+            u["plastic_group"], data, ["plastic_activity", "plastic_activities"]
+        )
+
+        # Remarks
+        if u["remarks"]:
+            u["remarks"].setPlainText(self._get_str(data, ["remarks", "notes"]))
+
+    def _collect_form_data(self) -> Dict:
+        """Scrape data from UI widgets into a dictionary."""
+        u = self.ui
+
+        data = {
+            "site_name": u["farm_name"].text().strip() if u["farm_name"] else "",
+            "owner": u["owner_name"].text().strip() if u["owner_name"] else "",
+            "address": u["address"].text().strip() if u["address"] else "",
+            "longitude": u["long_spin"].value() if u["long_spin"] else 0.0,
+            "latitude": u["lat_spin"].value() if u["lat_spin"] else 0.0,
+            "land_area_ha": u["land_area"].value() if u["land_area"] else 0.0,
+            "soil_type": u["soil_combo"].currentText() if u["soil_combo"] else "",
+            "cultivation_practice": (
+                u["practice_combo"].currentText() if u["practice_combo"] else ""
+            ),
+            "remarks": u["remarks"].toPlainText() if u["remarks"] else "",
+        }
+
+        # Crops
+        if u["crops_input"]:
+            raw = u["crops_input"].text()
+            data["crops"] = [x.strip() for x in raw.split(",") if x.strip()]
+        else:
+            data["crops"] = []
+
+        # Checkboxes
+        data["water_source"] = self._get_checked_labels(u["water_group"])
+        data["plastic_activity"] = self._get_checked_labels(u["plastic_group"])
+
+        return data
+
+    # ================= ACTION LOGIC =================
+
+    def _save_record(self, mode="create"):
+        """Handle Create or Update logic."""
+        if not DirectusClient:
+            QtWidgets.QMessageBox.warning(
+                self.page, "Error", "Directus client unavailable."
+            )
+            return
+
+        # 1. Unselect logic for 'Create' button acting as 'Clear'
+        if (
+            mode == "create"
+            and self.ui["table"]
+            and self.ui["table"].selectionModel().hasSelection()
+        ):
+            self.ui["table"].clearSelection()
+            self._fill_form({})
+            return
+
+        # 2. Validate
+        payload = self._collect_form_data()
+        missing = []
+        if not payload["site_name"]:
+            missing.append("Farm Name")
+        if payload["longitude"] == 0:
+            missing.append("Longitude")
+        if payload["latitude"] == 0:
+            missing.append("Latitude")
+
+        if missing:
+            QtWidgets.QMessageBox.warning(
+                self.page, "Validation", f"Missing: {', '.join(missing)}"
+            )
+            return
+
+        # 3. Identify ID for Update
+        site_id = None
+        if mode == "update":
+            # Extract ID from currently selected row
+            if not self.ui["table"]:
+                return
+            rows = self.ui["table"].selectionModel().selectedRows()
+            if not rows:
+                return
+
+            try:
+                raw_json = (
+                    self.ui["table"]
+                    .item(rows[0].row(), 1)
+                    .data(QtCore.Qt.ItemDataRole.UserRole)
+                )
+                obj = json.loads(raw_json)
+                site_id = obj.get("id")
+            except Exception:
+                pass
+
+            if not site_id:
+                QtWidgets.QMessageBox.warning(
+                    self.page, "Error", "Could not determine Site ID for update."
+                )
+                return
+
+        # 4. UI Feedback
+        if mode == "create":
+            self.ui["create_btn"].setEnabled(False)
+        if mode == "update":
+            self.ui["update_btn"].setEnabled(False)
+
+        # 5. Threading
+        def worker():
+            try:
+                client = DirectusClient()
+                if mode == "create":
+                    resp = client.create_site(payload)
+                    self.signals.success.emit("create", resp)
+                else:
+                    resp = client.update_site(site_id, payload)
+                    self.signals.success.emit("update", resp)
+            except Exception:
+                self.signals.error.emit(traceback.format_exc())
+
+        Thread(target=worker, daemon=True).start()
+
+    def _on_worker_success(self, action, resp):
+        """Handle successful API response."""
+        msg = (
+            "Site created successfully."
+            if action == "create"
+            else "Site updated successfully."
+        )
+        QtWidgets.QMessageBox.information(self.page, "Success", msg)
+
+        # Reset UI
+        self._fill_form({})
+        if self.ui["table"]:
+            self.ui["table"].clearSelection()
+        self._toggle_buttons(mode="create")
+
+        # Trigger Refresh
+        if self.main_window and hasattr(self.main_window, "_start_directus_fetch"):
+            self.main_window._start_directus_fetch()
+
+    def _on_worker_error(self, tb):
+        print(f"Worker Error: {tb}")
+        QtWidgets.QMessageBox.critical(
+            self.page, "Failed", "Operation failed. Check console."
+        )
+        self._toggle_buttons(mode="reset")  # Re-enable buttons
+
+    # ================= HELPERS =================
+
+    def _toggle_buttons(self, mode):
+        """Manage button states."""
+        c_btn = self.ui["create_btn"]
+        u_btn = self.ui["update_btn"]
+
+        if not c_btn or not u_btn:
+            return
+
+        c_btn.setEnabled(True)
+
+        if mode == "edit":
+            c_btn.setText("Unselect Item")
+            u_btn.setEnabled(True)
+            u_btn.setStyleSheet("")  # Reset style
+        elif mode == "create":
+            c_btn.setText("Create New Record")
+            u_btn.setEnabled(False)
+            u_btn.setStyleSheet("background-color:#ddd;color:#666;")
+        elif mode == "reset":
+            c_btn.setEnabled(True)
+            u_btn.setEnabled(True)
+
+    def _get_str(self, data, keys):
+        """Return first non-empty value from a list of keys."""
+        if not data:
+            return ""
+        for k in keys:
+            val = data.get(k)
+            if val:
+                return str(val)
+        return ""
+
+    def _set_spin(self, widget, data, keys):
+        if not widget:
+            return
+        for k in keys:
+            val = data.get(k)
+            if val is not None:
+                try:
+                    widget.setValue(float(val))
+                    return
+                except:
+                    pass
+        widget.setValue(0.0)
+
+    def _set_combo(self, widget, value):
+        if not widget or not value:
+            if widget:
+                widget.setCurrentIndex(-1)
+            return
+
+        # Flexible matching
+        val_lower = str(value).lower()
+        for i in range(widget.count()):
+            if val_lower in widget.itemText(i).lower():
+                widget.setCurrentIndex(i)
+                return
+
+        # Allow setting text if editable
+        if widget.isEditable():
+            widget.setEditText(str(value))
+
+    def _set_checkbox_group(self, group, data, keys):
+        if not group:
+            return
+
+        # 1. Find the list of values
+        target_values = []
+        for k in keys:
+            v = data.get(k)
+            if v:
+                if isinstance(v, list):
+                    target_values = [str(x).lower() for x in v]
+                else:
+                    target_values = [str(v).lower()]
+                break
+
+        # 2. Iterate checkboxes and check matches
+        for cb in group.findChildren(QtWidgets.QCheckBox):
+            cb.setChecked(False)  # Reset
+            if not target_values:
+                continue
+
+            txt = (cb.text() or "").lower()
+            obj = (cb.objectName() or "").lower()
+
+            # Check if any target value is inside the checkbox label or vice versa
+            if any(tv in txt or txt in tv or tv in obj for tv in target_values):
+                cb.setChecked(True)
+
+    def _get_checked_labels(self, group) -> List[str]:
+        res = []
+        if group:
+            for cb in group.findChildren(QtWidgets.QCheckBox):
+                if cb.isChecked():
+                    res.append(cb.text())
+        return res
+
+
+# ================= ENTRY POINT =================
 
 
 def setup(farm_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
-    """Initialize the farm page UI: populate `farmsTable` from Directus sites
-    and wire selection to populate the form on the right.
-    """
-    if farm_page is None:
-        return
-
-    # find widgets (best-effort)
-    farms_table = farm_page.findChild(QtWidgets.QTableWidget, "farmsTable")
-    search_input = farm_page.findChild(QtWidgets.QLineEdit, "farmNameSearch")
-    practice_search_combo = farm_page.findChild(
-        QtWidgets.QComboBox, "practiceComboSearch"
-    )
-
-    # form fields
-    farm_name = farm_page.findChild(QtWidgets.QLineEdit, "farmNameInput")
-    owner_name = farm_page.findChild(QtWidgets.QLineEdit, "ownerNameInput")
-    address = farm_page.findChild(QtWidgets.QLineEdit, "addressInput")
-    long_spin = farm_page.findChild(QtWidgets.QDoubleSpinBox, "longInput")
-    lat_spin = farm_page.findChild(QtWidgets.QDoubleSpinBox, "latInput")
-    land_area = farm_page.findChild(QtWidgets.QDoubleSpinBox, "landAreaInput")
-    water_group = farm_page.findChild(QtWidgets.QGroupBox, "waterSourceGroup")
-    soil_combo = farm_page.findChild(QtWidgets.QComboBox, "soilTextureCombo")
-    crops_input = farm_page.findChild(QtWidgets.QLineEdit, "cropsInput")
-    practice_input = farm_page.findChild(QtWidgets.QComboBox, "practiceCombo")
-    remarks = farm_page.findChild(QtWidgets.QTextEdit, "remarksText")
-    create_btn = farm_page.findChild(QtWidgets.QPushButton, "createRecord")
-    update_btn = farm_page.findChild(QtWidgets.QPushButton, "updateRecord")
-
-    # ensure table basic setup
-    if farms_table is not None:
-        farms_table.setSelectionBehavior(
-            QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows
-        )
-        farms_table.setSelectionMode(
-            QtWidgets.QAbstractItemView.SelectionMode.SingleSelection
-        )
-        farms_table.setColumnCount(max(3, farms_table.columnCount()))
-        try:
-            farms_table.setHorizontalHeaderLabels(["Practice", "Farm Name", "Address"])
-        except Exception:
-            pass
-
-    def _get_sites_list():
-        try:
-            if main_window is None:
-                return []
-            sites = main_window.get_sites() or []
-            if isinstance(sites, dict) and "data" in sites:
-                return sites.get("data") or []
-            if isinstance(sites, list):
-                return sites
-            return []
-        except Exception:
-            return []
-
-    def populate_table():
-        items = _get_sites_list()
-        if farms_table is None:
-            return
-        try:
-            farms_table.setSortingEnabled(False)
-        except Exception:
-            pass
-        farms_table.setRowCount(0)
-        practices = set()
-        for s in items:
-            r = farms_table.rowCount()
-            farms_table.insertRow(r)
-            practice = (
-                s.get("cultivation_practice")
-                or s.get("practice")
-                or s.get("farm_practice")
-                or ""
-            )
-            practices.add(str(practice)) if practice else None
-            try:
-                farms_table.setItem(r, 0, QtWidgets.QTableWidgetItem(str(practice)))
-            except Exception:
-                pass
-
-            name = s.get("site_name") or s.get("name") or s.get("title") or ""
-            item_name = QtWidgets.QTableWidgetItem(str(name))
-            try:
-                item_name.setData(
-                    QtCore.Qt.ItemDataRole.UserRole, json.dumps(s, default=str)
-                )
-            except Exception:
-                try:
-                    item_name.setData(QtCore.Qt.ItemDataRole.UserRole, str(s))
-                except Exception:
-                    pass
-            try:
-                farms_table.setItem(r, 1, item_name)
-            except Exception:
-                pass
-
-            addr = s.get("address") or s.get("location") or ""
-            try:
-                farms_table.setItem(r, 2, QtWidgets.QTableWidgetItem(str(addr)))
-            except Exception:
-                pass
-
-        try:
-            farms_table.resizeColumnsToContents()
-        except Exception:
-            pass
-        try:
-            farms_table.setSortingEnabled(True)
-        except Exception:
-            pass
-
-        # update practice combo
-        if practice_input is not None:
-            try:
-                practice_input.blockSignals(True)
-                practice_input.clear()
-                practice_input.addItem("")
-                for p in sorted(practices):
-                    practice_input.addItem(str(p))
-                practice_input.blockSignals(False)
-            except Exception:
-                pass
-        # update practice search combo (left-hand filter)
-        if practice_search_combo is not None:
-            try:
-                practice_search_combo.blockSignals(True)
-                practice_search_combo.clear()
-                # empty means show all
-                practice_search_combo.addItem("")
-                for p in sorted(practices):
-                    practice_search_combo.addItem(str(p))
-                practice_search_combo.blockSignals(False)
-            except Exception:
-                pass
-
-    def _fill_form_from_site(s):
-        # accepts dict or JSON string; empty dict clears fields
-        try:
-            if isinstance(s, str):
-                try:
-                    s = json.loads(s)
-                except Exception:
-                    s = {"raw": s}
-            if isinstance(s, dict) and not s:
-                # clear
-                for w in [farm_name, owner_name, address, crops_input]:
-                    try:
-                        if w is not None:
-                            w.setText("")
-                    except Exception:
-                        pass
-                for sp in [long_spin, lat_spin, land_area]:
-                    try:
-                        if sp is not None:
-                            sp.setValue(0.0)
-                    except Exception:
-                        pass
-                for cb in [soil_combo, practice_input]:
-                    try:
-                        if cb is None:
-                            continue
-                        try:
-                            cb.setCurrentIndex(-1)
-                        except Exception:
-                            try:
-                                if cb.isEditable():
-                                    cb.setEditText("")
-                                else:
-                                    if cb.count() == 0 or cb.itemText(0) != "":
-                                        cb.insertItem(0, "")
-                                    cb.setCurrentIndex(0)
-                            except Exception:
-                                pass
-                    except Exception:
-                        pass
-                try:
-                    if water_group is not None:
-                        for cb in water_group.findChildren(QtWidgets.QCheckBox):
-                            try:
-                                cb.setChecked(False)
-                            except Exception:
-                                pass
-                except Exception:
-                    pass
-                try:
-                    pg = farm_page.findChild(QtWidgets.QGroupBox, "plasticActGroup")
-                    if pg is not None:
-                        for cb in pg.findChildren(QtWidgets.QCheckBox):
-                            try:
-                                cb.setChecked(False)
-                            except Exception:
-                                pass
-                except Exception:
-                    pass
-                try:
-                    if remarks is not None:
-                        remarks.setPlainText("")
-                except Exception:
-                    pass
-                return
-
-            # helpers
-            def _set_line(w, v):
-                try:
-                    if w is None:
-                        return
-                    w.setText(str(v) if v is not None else "")
-                except Exception:
-                    pass
-
-            def _set_spin(w, v):
-                try:
-                    if w is None:
-                        return
-                    if v is None:
-                        w.setValue(0.0)
-                    else:
-                        try:
-                            w.setValue(float(v))
-                        except Exception:
-                            w.setValue(0.0)
-                except Exception:
-                    pass
-
-            _set_line(
-                farm_name, s.get("site_name") or s.get("name") or s.get("title") or ""
-            )
-            _set_line(owner_name, s.get("owner") or s.get("contact") or "")
-            _set_line(address, s.get("address") or s.get("location") or "")
-            _set_spin(
-                long_spin,
-                s.get("longitude") or s.get("lon") or s.get("long") or s.get("lng"),
-            )
-            _set_spin(lat_spin, s.get("latitude") or s.get("lat"))
-            _set_spin(
-                land_area, s.get("area_ha") or s.get("land_area") or s.get("area")
-            )
-
-            # water source
-            try:
-                ws = s.get("water_source") or s.get("waterSources") or s.get("water")
-                if ws is None:
-                    ws_list = []
-                elif isinstance(ws, list):
-                    ws_list = [str(x).lower() for x in ws if x]
-                else:
-                    ws_list = [str(ws).lower()]
-
-                def _apply_group_checks(group, values):
-                    try:
-                        if group is None:
-                            return
-                        cbs = group.findChildren(QtWidgets.QCheckBox)
-                        for cb in cbs:
-                            try:
-                                cb.setChecked(False)
-                            except Exception:
-                                pass
-                        for val in values:
-                            if not val:
-                                continue
-                            for cb in cbs:
-                                try:
-                                    cb_text = (cb.text() or "").lower()
-                                    cb_obj = (cb.objectName() or "").lower()
-                                    if (
-                                        val in cb_text
-                                        or cb_text in val
-                                        or val in cb_obj
-                                    ):
-                                        cb.setChecked(True)
-                                except Exception:
-                                    pass
-                    except Exception:
-                        pass
-
-                _apply_group_checks(water_group, ws_list)
-            except Exception:
-                pass
-
-            # soil
-            try:
-                soil_val = s.get("soil_type") or s.get("soil_texture") or s.get("soil")
-                if soil_combo is not None and soil_val is not None:
-                    sval = str(soil_val).lower()
-                    matched = False
-                    for i in range(soil_combo.count()):
-                        try:
-                            it = soil_combo.itemText(i) or ""
-                            if sval in it.lower() or it.lower() in sval:
-                                soil_combo.setCurrentIndex(i)
-                                matched = True
-                                break
-                        except Exception:
-                            pass
-                    if not matched:
-                        try:
-                            if soil_combo.isEditable():
-                                soil_combo.setEditText(str(soil_val))
-                        except Exception:
-                            pass
-            except Exception:
-                pass
-
-            # crops
-            try:
-                crops_val = s.get("crops")
-                if isinstance(crops_val, list):
-                    crops_input.setText(",".join(crops_val))
-                else:
-                    crops_input.setText(str(crops_val) if crops_val is not None else "")
-            except Exception:
-                pass
-
-            # practice
-            try:
-                if practice_input is not None:
-                    practice_val = (
-                        s.get("cultivation_practice") or s.get("practice") or None
-                    )
-                    if practice_val is not None:
-                        idx = practice_input.findText(str(practice_val))
-                        if idx >= 0:
-                            practice_input.setCurrentIndex(idx)
-                        else:
-                            try:
-                                practice_input.addItem(str(practice_val))
-                                practice_input.setCurrentIndex(
-                                    practice_input.count() - 1
-                                )
-                            except Exception:
-                                pass
-            except Exception:
-                pass
-
-            # plastic activity
-            try:
-                pa = s.get("plastic_activity") or s.get("plastic_activities")
-                if pa is None:
-                    pa_list = []
-                elif isinstance(pa, list):
-                    pa_list = [str(x).lower() for x in pa if x]
-                else:
-                    pa_list = [str(pa).lower()]
-                pg = farm_page.findChild(QtWidgets.QGroupBox, "plasticActGroup")
-                try:
-                    if pg is not None:
-                        for cb in pg.findChildren(QtWidgets.QCheckBox):
-                            try:
-                                cb.setChecked(False)
-                            except Exception:
-                                pass
-                        for val in pa_list:
-                            for cb in pg.findChildren(QtWidgets.QCheckBox):
-                                try:
-                                    txt = (cb.text() or "").lower()
-                                    obj = (cb.objectName() or "").lower()
-                                    if val in txt or txt in val or val in obj:
-                                        cb.setChecked(True)
-                                except Exception:
-                                    pass
-                except Exception:
-                    pass
-            except Exception:
-                pass
-
-            try:
-                if remarks is not None:
-                    remarks.setPlainText(s.get("remarks") or s.get("notes") or "")
-            except Exception:
-                pass
-
-        except Exception:
-            # protect against any parse error
-            try:
-                print("_fill_form_from_site: failed", traceback.format_exc())
-            except Exception:
-                pass
-
-    # Worker signals
-    class _WorkerSignals(QtCore.QObject):
-        success = QtCore.pyqtSignal(object)
-        error = QtCore.pyqtSignal(str)
-
-    signals = _WorkerSignals()
-
-    def _handle_worker_success(resp):
-        try:
-            action = None
-            data = None
-            if isinstance(resp, (list, tuple)) and len(resp) >= 1:
-                action = resp[0]
-                data = resp[1] if len(resp) > 1 else None
-            else:
-                data = resp
-        except Exception:
-            data = resp
-        try:
-            title = "Created Site" if action != "update" else "Updated Site"
-            text = (
-                "Site created successfully"
-                if action != "update"
-                else "Site updated successfully"
-            )
-            QtWidgets.QMessageBox.information(farm_page, title, text)
-        except Exception:
-            pass
-        try:
-            _fill_form_from_site({})
-        except Exception:
-            pass
-        try:
-            if farms_table is not None:
-                farms_table.clearSelection()
-        except Exception:
-            pass
-        try:
-            if create_btn is not None:
-                create_btn.setEnabled(True)
-        except Exception:
-            pass
-        try:
-            if update_btn is not None:
-                update_btn.setEnabled(False)
-                update_btn.setStyleSheet("background-color:#ddd;color:#666;")
-        except Exception:
-            pass
-        try:
-            if main_window is not None and hasattr(
-                main_window, "_start_directus_fetch"
-            ):
-                main_window._start_directus_fetch()
-        except Exception:
-            pass
-
-    def _handle_worker_error(tb):
-        try:
-            print("_handle_worker_error:", tb[:400])
-        except Exception:
-            pass
-        try:
-            QtWidgets.QMessageBox.critical(
-                farm_page, "Operation Failed", "See console for details."
-            )
-        except Exception:
-            pass
-        try:
-            if create_btn is not None:
-                create_btn.setEnabled(True)
-        except Exception:
-            pass
-        try:
-            if update_btn is not None:
-                update_btn.setEnabled(False)
-        except Exception:
-            pass
-
-    # connect signals
+    """Entry point called by main application."""
     try:
-        signals.success.connect(_handle_worker_success)
-        signals.error.connect(_handle_worker_error)
-    except Exception:
-        pass
-
-    def update_create_button_label():
-        try:
-            if farms_table is None or create_btn is None:
-                return
-            sels = (
-                farms_table.selectionModel().selectedRows()
-                if farms_table is not None
-                else []
-            )
-            if sels:
-                create_btn.setText("Unselect Item")
-                if update_btn is not None:
-                    update_btn.setEnabled(True)
-                    try:
-                        update_btn.setStyleSheet("")
-                    except Exception:
-                        pass
-            else:
-                create_btn.setText("Create New Record")
-                if update_btn is not None:
-                    update_btn.setEnabled(False)
-                    try:
-                        update_btn.setStyleSheet("background-color:#ddd;color:#666;")
-                    except Exception:
-                        pass
-        except Exception:
-            pass
-
-    def on_table_selection_changed():
-        try:
-            if farms_table is None:
-                return
-            sels = farms_table.selectionModel().selectedRows()
-            update_create_button_label()
-            if not sels:
-                return
-            idx = sels[0].row()
-            it = farms_table.item(idx, 1)
-            if it is None:
-                return
-            data = it.data(QtCore.Qt.ItemDataRole.UserRole)
-            if data is None:
-                return
-            try:
-                site = json.loads(data)
-            except Exception:
-                site = data
-            _fill_form_from_site(site)
-        except Exception:
-            pass
-
-    if farms_table is not None:
-        try:
-            farms_table.selectionModel().selectionChanged.connect(
-                lambda s, d: on_table_selection_changed()
-            )
-            update_create_button_label()
-        except Exception:
-            pass
-
-    # search
-    if search_input is not None and farms_table is not None:
-        try:
-
-            def apply_filters(_=None):
-                try:
-                    name_txt = (
-                        (search_input.text() if search_input is not None else "")
-                        .strip()
-                        .lower()
-                    )
-                except Exception:
-                    name_txt = ""
-                try:
-                    practice_txt = (
-                        (
-                            practice_search_combo.currentText()
-                            if practice_search_combo is not None
-                            else ""
-                        )
-                        .strip()
-                        .lower()
-                    )
-                except Exception:
-                    practice_txt = ""
-
-                for r in range(farms_table.rowCount()):
-                    try:
-                        # name match
-                        item = farms_table.item(r, 1)
-                        if item is None:
-                            name_ok = True
-                        else:
-                            name = (item.text() or "").lower()
-                            name_ok = (name_txt in name) if name_txt else True
-
-                        # practice match (column 0)
-                        pitem = farms_table.item(r, 0)
-                        if pitem is None:
-                            practice_ok = True
-                        else:
-                            pval = (pitem.text() or "").lower()
-                            practice_ok = (
-                                (practice_txt in pval) if practice_txt else True
-                            )
-
-                        farms_table.setRowHidden(r, not (name_ok and practice_ok))
-                    except Exception:
-                        pass
-
-            # connect both inputs to the combined filter
-            search_input.textChanged.connect(apply_filters)
-            if practice_search_combo is not None:
-                try:
-                    practice_search_combo.currentTextChanged.connect(apply_filters)
-                except Exception:
-                    pass
-        except Exception:
-            pass
-
-    # refresh hook
-    try:
-        if main_window is not None and hasattr(main_window, "dataLoaded"):
-            main_window.dataLoaded.connect(populate_table)
-    except Exception:
-        pass
-
-    # initial populate
-    try:
-        populate_table()
-    except Exception:
-        pass
-
-    # Create behavior
-    if create_btn is not None:
-
-        def _on_create():
-            try:
-                # if selection exists -> unselect + clear
-                try:
-                    sels = (
-                        farms_table.selectionModel().selectedRows()
-                        if farms_table is not None
-                        else []
-                    )
-                except Exception:
-                    sels = []
-                if sels:
-                    try:
-                        farms_table.clearSelection()
-                        _fill_form_from_site({})
-                        update_create_button_label()
-                        return
-                    except Exception:
-                        pass
-
-                if DirectusClient is None:
-                    try:
-                        QtWidgets.QMessageBox.information(
-                            farm_page,
-                            "Directus Not Configured",
-                            "Directus client not available.",
-                        )
-                    except Exception:
-                        pass
-                    return
-
-                # gather fields
-                item = {}
-                try:
-                    item["site_name"] = (
-                        farm_name.text() if farm_name is not None else ""
-                    )
-                    item["owner"] = owner_name.text() if owner_name is not None else ""
-                    item["address"] = address.text() if address is not None else ""
-                    item["longitude"] = (
-                        str(long_spin.value()) if long_spin is not None else ""
-                    )
-                    item["latitude"] = (
-                        str(lat_spin.value()) if lat_spin is not None else ""
-                    )
-                    item["land_area_ha"] = (
-                        str(land_area.value()) if land_area is not None else ""
-                    )
-                    crops_raw = crops_input.text() if crops_input is not None else ""
-                    item["crops"] = [
-                        x.strip() for x in crops_raw.split(",") if x.strip()
-                    ]
-                    item["soil_type"] = (
-                        soil_combo.currentText() if soil_combo is not None else ""
-                    )
-                    item["cultivation_practice"] = (
-                        practice_input.currentText()
-                        if practice_input is not None
-                        else ""
-                    )
-                    ws = []
-                    if water_group is not None:
-                        for cb in water_group.findChildren(QtWidgets.QCheckBox):
-                            try:
-                                if cb.isChecked():
-                                    ws.append(cb.text())
-                            except Exception:
-                                pass
-                    item["water_source"] = ws
-                    pg = farm_page.findChild(QtWidgets.QGroupBox, "plasticActGroup")
-                    pa = []
-                    if pg is not None:
-                        for cb in pg.findChildren(QtWidgets.QCheckBox):
-                            try:
-                                if cb.isChecked():
-                                    pa.append(cb.text())
-                            except Exception:
-                                pass
-                    item["plastic_activity"] = pa
-                    item["remarks"] = (
-                        remarks.toPlainText() if remarks is not None else ""
-                    )
-                except Exception:
-                    pass
-
-                # validate
-                missing = []
-                if not item.get("site_name"):
-                    missing.append("Site Name")
-                try:
-                    lon = float(item.get("longitude") or 0.0)
-                except Exception:
-                    lon = 0.0
-                try:
-                    lat = float(item.get("latitude") or 0.0)
-                except Exception:
-                    lat = 0.0
-                if lon == 0.0:
-                    missing.append("Longitude")
-                if lat == 0.0:
-                    missing.append("Latitude")
-                if missing:
-                    try:
-                        QtWidgets.QMessageBox.warning(
-                            farm_page,
-                            "Validation Error",
-                            "Please fill required fields: " + ", ".join(missing),
-                        )
-                    except Exception:
-                        pass
-                    return
-
-                # disable button
-                try:
-                    create_btn.setEnabled(False)
-                except Exception:
-                    pass
-
-                def _worker_post(itm):
-                    try:
-                        client = DirectusClient()
-                        resp = client.create_site(itm)
-                        signals.success.emit(("create", resp))
-                    except Exception:
-                        tb = traceback.format_exc()
-                        signals.error.emit(tb)
-
-                try:
-                    t = Thread(target=_worker_post, args=(item,), daemon=True)
-                    t.start()
-                except Exception:
-                    try:
-                        _worker_post(item)
-                    except Exception:
-                        pass
-
-            except Exception:
-                pass
-
-        try:
-            create_btn.clicked.connect(_on_create)
-        except Exception:
-            pass
-
-    # Update behavior
-    if update_btn is not None:
-
-        def _on_update():
-            try:
-                # require selection
-                try:
-                    sels = (
-                        farms_table.selectionModel().selectedRows()
-                        if farms_table is not None
-                        else []
-                    )
-                except Exception:
-                    sels = []
-                if not sels:
-                    try:
-                        QtWidgets.QMessageBox.warning(
-                            farm_page, "No Selection", "Please select a site to update."
-                        )
-                    except Exception:
-                        pass
-                    return
-                idx = sels[0].row()
-                it = farms_table.item(idx, 1)
-                if it is None:
-                    try:
-                        QtWidgets.QMessageBox.warning(
-                            farm_page, "No Data", "Selected row has no site data."
-                        )
-                    except Exception:
-                        pass
-                    return
-                data = it.data(QtCore.Qt.ItemDataRole.UserRole)
-                try:
-                    site = json.loads(data)
-                except Exception:
-                    site = data
-                site_id = None
-                if isinstance(site, dict):
-                    site_id = site.get("id") or site.get("site_id")
-                if not site_id:
-                    try:
-                        QtWidgets.QMessageBox.warning(
-                            farm_page,
-                            "Missing ID",
-                            "Cannot determine site id for update.",
-                        )
-                    except Exception:
-                        pass
-                    return
-
-                # gather values similar to create
-                upd = {}
-                try:
-                    upd["site_name"] = farm_name.text() if farm_name is not None else ""
-                    upd["owner"] = owner_name.text() if owner_name is not None else ""
-                    upd["address"] = address.text() if address is not None else ""
-                    upd["longitude"] = (
-                        str(long_spin.value()) if long_spin is not None else ""
-                    )
-                    upd["latitude"] = (
-                        str(lat_spin.value()) if lat_spin is not None else ""
-                    )
-                    upd["land_area_ha"] = (
-                        str(land_area.value()) if land_area is not None else ""
-                    )
-                    crops_raw = crops_input.text() if crops_input is not None else ""
-                    upd["crops"] = [
-                        x.strip() for x in crops_raw.split(",") if x.strip()
-                    ]
-                    upd["soil_type"] = (
-                        soil_combo.currentText() if soil_combo is not None else ""
-                    )
-                    upd["cultivation_practice"] = (
-                        practice_input.currentText()
-                        if practice_input is not None
-                        else ""
-                    )
-                    ws = []
-                    if water_group is not None:
-                        for cb in water_group.findChildren(QtWidgets.QCheckBox):
-                            try:
-                                if cb.isChecked():
-                                    ws.append(cb.text())
-                            except Exception:
-                                pass
-                    upd["water_source"] = ws
-                    pg = farm_page.findChild(QtWidgets.QGroupBox, "plasticActGroup")
-                    pa = []
-                    if pg is not None:
-                        for cb in pg.findChildren(QtWidgets.QCheckBox):
-                            try:
-                                if cb.isChecked():
-                                    pa.append(cb.text())
-                            except Exception:
-                                pass
-                    upd["plastic_activity"] = pa
-                    upd["remarks"] = (
-                        remarks.toPlainText() if remarks is not None else ""
-                    )
-                except Exception:
-                    pass
-
-                # validate
-                missing = []
-                if not upd.get("site_name"):
-                    missing.append("Site Name")
-                try:
-                    lonv = float(upd.get("longitude") or 0.0)
-                except Exception:
-                    lonv = 0.0
-                try:
-                    latv = float(upd.get("latitude") or 0.0)
-                except Exception:
-                    latv = 0.0
-                if lonv == 0.0:
-                    missing.append("Longitude")
-                if latv == 0.0:
-                    missing.append("Latitude")
-                if missing:
-                    try:
-                        QtWidgets.QMessageBox.warning(
-                            farm_page,
-                            "Validation Error",
-                            "Please fill required fields: " + ", ".join(missing),
-                        )
-                    except Exception:
-                        pass
-                    return
-
-                try:
-                    update_btn.setEnabled(False)
-                    update_btn.setStyleSheet("background-color:#ddd;color:#666;")
-                except Exception:
-                    pass
-
-                def _worker_update(sid, payload):
-                    try:
-                        client = DirectusClient()
-                        resp = client.update_site(sid, payload)
-                        signals.success.emit(("update", resp))
-                    except Exception:
-                        tb = traceback.format_exc()
-                        signals.error.emit(tb)
-
-                try:
-                    t = Thread(target=_worker_update, args=(site_id, upd), daemon=True)
-                    t.start()
-                except Exception:
-                    try:
-                        _worker_update(site_id, upd)
-                    except Exception:
-                        pass
-
-            except Exception:
-                pass
-
-        try:
-            update_btn.clicked.connect(_on_update)
-        except Exception:
-            pass
+        # Attach controller to widget to keep it alive
+        farm_page._controller = FarmPageController(farm_page, main_window)
+    except Exception as e:
+        print(f"FarmPage setup failed: {e}")
+        traceback.print_exc()
