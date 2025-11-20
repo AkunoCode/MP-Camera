@@ -786,7 +786,9 @@ class CameraPageController(QtCore.QObject):
                 print(f"Reload inference failed to write temp image: {e}")
 
         # Nothing to run on
-        QtWidgets.QMessageBox.information(self.page, "No Image", "No image available to re-run inference.")
+        QtWidgets.QMessageBox.information(
+            self.page, "No Image", "No image available to re-run inference."
+        )
 
     def _on_view_toggled(self):
         """Toggle polygon/overlay visibility and update the view button appearance."""
