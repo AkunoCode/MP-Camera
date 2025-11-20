@@ -27,7 +27,7 @@ from mpcamera.utils.prediction_utils import extract_points_from_prediction
 from mpcamera.ui.overlays import ensure_overlay_for_view, render_predictions_on_scene
 from mpcamera.utils.inference_utils import parse_result_to_preds, compute_aggregates
 from mpcamera.utils.um_per_pixel import calculate_micrometers_per_pixel
-from mpcamera.utils.color_utils import get_color_name  # <--- Added Import
+from mpcamera.utils.color_utils import get_color_name
 from mpcamera.utils.morphometrics import (
     calculate_area_um2,
     calculate_perimeter_um,
@@ -58,8 +58,9 @@ class CameraPageController(QtCore.QObject):
     FRAME_INTERVAL_MS = 33  # ~30 FPS
     INFERENCE_INTERVAL_MS = 1000
 
-    # Confidence Threshold (Detection Sensitivity)
-    CONFIDENCE_THRESHOLD = 0.40
+    # Default Defaults (Overridden by sliders if present)
+    DEFAULT_CONFIDENCE = 0.40
+    DEFAULT_IOU = 0.50
 
     DEFAULT_MODEL = ("YOLOv11 (Cloud)", "detect-count-and-visualize-2")
     ALT_MODEL = ("RF-DETR-SEG (Cloud)", "detect-count-and-visualize")
@@ -89,9 +90,7 @@ class CameraPageController(QtCore.QObject):
         self._paused = False
         self._inference_running = False
         self._last_pixmap: Optional[QtGui.QPixmap] = None
-        self._current_frame_np: Optional[np.ndarray] = (
-            None  # <--- New: Store raw image for color analysis
-        )
+        self._current_frame_np: Optional[np.ndarray] = None
         self._cached_soils: List[Dict] = []
 
         # Local Inference State
@@ -143,6 +142,12 @@ class CameraPageController(QtCore.QObject):
             "mag_spin": self.page.findChild(
                 QtWidgets.QDoubleSpinBox, "magnificationSpinbox"
             ),
+            # Sliders
+            "conf_slider": self.page.findChild(QtWidgets.QSlider, "confidenceSlider"),
+            "iou_slider": self.page.findChild(QtWidgets.QSlider, "iouSlider"),
+            # Labels for sliders
+            "confidence": self.page.findChild(QtWidgets.QLabel, "confidence"),
+            "iou": self.page.findChild(QtWidgets.QLabel, "iou"),
             # Stats Labels
             "lbl_total": self.page.findChild(QtWidgets.QLabel, "totalCount"),
             "lbl_conf": self.page.findChild(QtWidgets.QLabel, "aveConfidence"),
@@ -185,6 +190,15 @@ class CameraPageController(QtCore.QObject):
         if ui["save_btn"] is not None:
             ui["save_btn"].clicked.connect(self._save_results)
 
+        # Sliders - Use sliderReleased to avoid re-running on every tick while dragging
+        if ui["conf_slider"] is not None:
+            ui["conf_slider"].sliderReleased.connect(self._on_param_changed)
+            # Update label live as the slider moves
+            ui["conf_slider"].valueChanged.connect(self._update_param_labels)
+        if ui["iou_slider"] is not None:
+            ui["iou_slider"].sliderReleased.connect(self._on_param_changed)
+            ui["iou_slider"].valueChanged.connect(self._update_param_labels)
+
         # Worker signals
         self.inference_finished_signal.connect(self._on_inference_finished)
         self.data_saved_signal.connect(self._on_save_finished)
@@ -201,9 +215,29 @@ class CameraPageController(QtCore.QObject):
         for widget in self.ui.values():
             if widget is not None and isinstance(
                 widget,
-                (QtWidgets.QPushButton, QtWidgets.QComboBox, QtWidgets.QTableWidget),
+                (
+                    QtWidgets.QPushButton,
+                    QtWidgets.QComboBox,
+                    QtWidgets.QTableWidget,
+                    QtWidgets.QSlider,
+                ),
             ):
                 widget.setCursor(hand_cursor)
+
+        # Init Sliders (Range 0-100 for percentage)
+        if self.ui["conf_slider"] is not None:
+            self.ui["conf_slider"].setRange(0, 100)
+            self.ui["conf_slider"].setValue(int(self.DEFAULT_CONFIDENCE * 100))
+
+        if self.ui["iou_slider"] is not None:
+            self.ui["iou_slider"].setRange(0, 100)
+            self.ui["iou_slider"].setValue(int(self.DEFAULT_IOU * 100))
+
+        # Update the slider labels to show percentage values
+        try:
+            self._update_param_labels()
+        except Exception:
+            pass
 
         # Init Model Combo
         combo = self.ui["model_combo"]
@@ -411,6 +445,40 @@ class CameraPageController(QtCore.QObject):
                     self.ui["farm_combo"].setCurrentIndex(idx)
                     self.ui["farm_combo"].blockSignals(False)
 
+    def _on_param_changed(self):
+        """Called when Confidence or IoU slider is adjusted/released."""
+        # Ensure labels reflect the final values
+        try:
+            self._update_param_labels()
+        except Exception:
+            pass
+
+        print("[CAMERA PAGE] Model parameters changed, re-running inference...")
+        if self._last_pixmap is not None:
+            self._run_inference_on_pixmap(self._last_pixmap, is_temp=True)
+
+    def _update_param_labels(self):
+        """Refresh the text of the Confidence and IoU labels to include current percent value."""
+        ui = self.ui
+        try:
+            conf_pct = (
+                ui["conf_slider"].value()
+                if ui.get("conf_slider") is not None
+                else int(self.DEFAULT_CONFIDENCE * 100)
+            )
+            iou_pct = (
+                ui["iou_slider"].value()
+                if ui.get("iou_slider") is not None
+                else int(self.DEFAULT_IOU * 100)
+            )
+
+            if ui.get("confidence") is not None:
+                ui["confidence"].setText(f"Confidence ({int(conf_pct)}%)")
+            if ui.get("iou") is not None:
+                ui["iou"].setText(f"IoU ({int(iou_pct)}%)")
+        except Exception:
+            pass
+
     def _on_model_changed(self):
         """Update config or local state when model changes."""
         if self.ui["model_combo"] is None:
@@ -608,6 +676,20 @@ class CameraPageController(QtCore.QObject):
 
         local_model_path = self._current_local_model_path
 
+        # --- RETRIEVE SLIDER VALUES ---
+        conf_val = self.DEFAULT_CONFIDENCE
+        iou_val = self.DEFAULT_IOU
+
+        # Convert 0-100 int to 0.0-1.0 float
+        if self.ui.get("conf_slider") is not None:
+            conf_val = self.ui["conf_slider"].value() / 100.0
+
+        if self.ui.get("iou_slider") is not None:
+            iou_val = self.ui["iou_slider"].value() / 100.0
+
+        # Debug print
+        print(f"[INFERENCE] Running with Conf={conf_val}, IoU={iou_val}")
+
         def worker():
             result = None
             try:
@@ -628,27 +710,32 @@ class CameraPageController(QtCore.QObject):
                             num_classes=self.LOCAL_NUM_CLASSES,
                         )
 
-                    # Run Prediction
+                    # Run Prediction with updated Thresholds
+                    # Note: Passing iou_threshold assuming local model utils supports it.
                     json_str = self._local_engine.predict_json(
                         path,
-                        confidence_threshold=self.CONFIDENCE_THRESHOLD,
+                        confidence_threshold=conf_val,
+                        iou_threshold=iou_val,
                         class_map=self.CLASS_MAP,
                     )
 
                     # Convert JSON string back to object for consistency with existing UI logic
-                    # Existing logic expects: result = [...] or dict
                     result = json.loads(json_str)
 
                 elif RoboflowClient:
                     # --- CLOUD INFERENCE ---
                     client = RoboflowClient.get_default()
 
-                    # Use the custom confidence threshold
+                    # Pass confidence and iou parameters to the workflow
                     try:
                         result = client.run_workflow(
-                            path, confidence=self.CONFIDENCE_THRESHOLD
+                            path, confidence=conf_val, iou=iou_val
                         )
                     except TypeError:
+                        # Fallback in case client wasn't updated
+                        print(
+                            "[WARNING] RoboflowClient does not support confidence/iou params yet."
+                        )
                         result = client.run_workflow(path)
 
             except Exception as e:
@@ -919,7 +1006,7 @@ class CameraPageController(QtCore.QObject):
                 "sample_source": soil_id,
                 "shape": table.item(r, 0).text(),
                 "confidence_level": float(table.item(r, 1).text() or 0),
-                "color": table.item(r, 2).text(),  # <--- Added Color
+                "color": table.item(r, 2).text(),
                 "area_um2": get_val(3),
                 "perimeter_um": get_val(4),
                 "major_axis_um": get_val(5),

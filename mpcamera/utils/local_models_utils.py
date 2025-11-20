@@ -11,7 +11,7 @@ import uuid
 import warnings
 
 # Suppress the torch load warning for cleaner logs
-warnings.filters.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 
 class LocalModelInference:
@@ -86,12 +86,22 @@ class LocalModelInference:
                 f"Could not load model as ResNet50 OR ResNet101. Error: {e}"
             )
 
-    def predict_json(self, image_path, class_map=None):
+    # UPDATED: Added confidence_threshold and iou_threshold arguments here
+    def predict_json(
+        self, image_path, confidence_threshold=None, iou_threshold=None, class_map=None
+    ):
         """
         Runs prediction and returns the JSON string directly.
-        Uses self.confidence_threshold and self.iou_threshold for filtering.
-        The output_image object is now completely excluded from the final JSON structure.
+        Allows dynamic overriding of confidence and IoU thresholds.
         """
+        # Use passed arguments if they exist, otherwise use class defaults
+        conf_thresh = (
+            confidence_threshold
+            if confidence_threshold is not None
+            else self.confidence_threshold
+        )
+        iou_thresh = iou_threshold if iou_threshold is not None else self.iou_threshold
+
         # 1. Load Image
         img = cv2.imread(image_path)
         if img is None:
@@ -109,18 +119,17 @@ class LocalModelInference:
         with torch.no_grad():
             prediction = self.model([img_tensor])[0]
 
-        # 4. Filter Results by Confidence
-        conf_keep = prediction["scores"] > self.confidence_threshold
+        # 4. Filter Results by Confidence (Using dynamic conf_thresh)
+        conf_keep = prediction["scores"] > conf_thresh
 
         boxes = prediction["boxes"][conf_keep]
         scores = prediction["scores"][conf_keep]
         labels = prediction["labels"][conf_keep]
         masks = prediction["masks"][conf_keep]
 
-        # 5. Filter Results using NMS (IoU Threshold)
+        # 5. Filter Results using NMS (Using dynamic iou_thresh)
         if len(boxes) > 0:
-            # Apply NMS using the instance variable
-            nms_keep = torchvision.ops.nms(boxes, scores, self.iou_threshold)
+            nms_keep = torchvision.ops.nms(boxes, scores, iou_thresh)
 
             # Keep only the detections selected by NMS
             boxes = boxes[nms_keep].cpu().numpy()
