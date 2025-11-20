@@ -1245,13 +1245,140 @@ class CameraPageController(QtCore.QObject):
                         if isinstance(resp, dict) and "data" in resp:
                             img_id = resp["data"].get("id")
                     finally:
-                        os.remove(img_path)
+                        try:
+                            os.remove(img_path)
+                        except Exception:
+                            pass
+
+                # Track successful creations per-shape so we can increment aggregates
+                shape_counters = {
+                    "fiber_count": 0,
+                    "fragment_count": 0,
+                    "sheets_count": 0,
+                    "foam_count": 0,
+                    "film_count": 0,
+                    "beads_count": 0,
+                }
+
+                # Helper to map shape label to soilsample/site field
+                def _shape_to_field(shape_label: str) -> Optional[str]:
+                    if not shape_label:
+                        return None
+                    s = str(shape_label).strip().lower()
+                    if s in ("fiber", "fibers"):
+                        return "fiber_count"
+                    if s in ("fragment", "fragments"):
+                        return "fragment_count"
+                    if s in ("sheet", "sheets"):
+                        return "sheets_count"
+                    if s in ("foam", "foams"):
+                        return "foam_count"
+                    if s in ("film", "films"):
+                        return "film_count"
+                    if s in ("bead", "beads", "pellet"):
+                        return "beads_count"
+                    return None
+
+                # The soilsample referenced by payloads (all payloads share same sample_source)
+                soil_id = None
+                if payloads:
+                    soil_id = payloads[0].get("sample_source")
 
                 for p in payloads:
-                    if img_id:
-                        p["image"] = img_id
-                    client.create_microplastic(p)
-                    count += 1
+                    try:
+                        if img_id:
+                            p["image"] = img_id
+                        resp = client.create_microplastic(p)
+                        # Count only on success
+                        count += 1
+                        field = _shape_to_field(p.get("shape"))
+                        if field:
+                            shape_counters[field] = shape_counters.get(field, 0) + 1
+                    except Exception as e:
+                        print(f"Failed to create microplastic record: {e}")
+
+                # If we created any records and have a soilsample, update aggregate counts
+                if soil_id and any(v > 0 for v in shape_counters.values()):
+                    try:
+                        # Retrieve soilsamples and find the matching sample
+                        soils_resp = client.get_soilsamples()
+                        soils = []
+                        if isinstance(soils_resp, dict) and "data" in soils_resp:
+                            soils = soils_resp.get("data") or []
+                        elif isinstance(soils_resp, list):
+                            soils = soils_resp
+
+                        sample = next(
+                            (s for s in soils if s.get("id") == soil_id), None
+                        )
+
+                        if sample is not None:
+                            # Prepare update payload by adding to existing numeric fields
+                            update_data = {}
+                            for field, delta in shape_counters.items():
+                                if delta <= 0:
+                                    continue
+                                try:
+                                    existing = int(sample.get(field) or 0)
+                                except Exception:
+                                    existing = 0
+                                update_data[field] = existing + delta
+
+                            if update_data:
+                                try:
+                                    client.update_soilsample(soil_id, update_data)
+                                except Exception as e:
+                                    print(f"Failed to update soilsample {soil_id}: {e}")
+
+                            # Now update the parent site aggregates (best-effort incremental)
+                            site_id = None
+                            # try a few common keys for the relationship
+                            for rel in ("site", "site_id", "farm"):
+                                if rel in sample:
+                                    site_id = sample.get(rel)
+                                    break
+
+                            if site_id:
+                                try:
+                                    sites_resp = client.get_sites()
+                                    sites = []
+                                    if (
+                                        isinstance(sites_resp, dict)
+                                        and "data" in sites_resp
+                                    ):
+                                        sites = sites_resp.get("data") or []
+                                    elif isinstance(sites_resp, list):
+                                        sites = sites_resp
+
+                                    site = next(
+                                        (s for s in sites if s.get("id") == site_id),
+                                        None,
+                                    )
+                                    if site is not None:
+                                        site_update = {}
+                                        for field, delta in shape_counters.items():
+                                            if delta <= 0:
+                                                continue
+                                            try:
+                                                existing = int(site.get(field) or 0)
+                                            except Exception:
+                                                existing = 0
+                                            site_update[field] = existing + delta
+
+                                        if site_update:
+                                            try:
+                                                client.update_site(site_id, site_update)
+                                            except Exception as e:
+                                                print(
+                                                    f"Failed to update site {site_id}: {e}"
+                                                )
+
+                                except Exception as e:
+                                    print(f"Site aggregate update failed: {e}")
+
+                    except Exception as e:
+                        print(f"Save worker aggregate update error: {e}")
+
             except Exception as e:
                 print(f"Save Worker Error: {e}")
 
