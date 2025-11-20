@@ -349,50 +349,6 @@ color:black;
          <item>
           <layout class="QHBoxLayout" name="horizontalLayout_4">
            <item>
-            <layout class="QVBoxLayout" name="model">
-             <property name="spacing">
-              <number>0</number>
-             </property>
-             <item>
-              <widget class="QLabel" name="label_5">
-               <property name="sizePolicy">
-                <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-                 <horstretch>0</horstretch>
-                 <verstretch>0</verstretch>
-                </sizepolicy>
-               </property>
-               <property name="styleSheet">
-                <string notr="true">QLabel {
-color:gray;
-}</string>
-               </property>
-               <property name="text">
-                <string>Select Model</string>
-               </property>
-              </widget>
-             </item>
-             <item>
-              <widget class="QComboBox" name="modelCombo">
-               <property name="minimumSize">
-                <size>
-                 <width>0</width>
-                 <height>40</height>
-                </size>
-               </property>
-               <property name="styleSheet">
-                <string notr="true">QComboBox{
-background-color:white;
-color:black;
-}</string>
-               </property>
-               <property name="frame">
-                <bool>true</bool>
-               </property>
-              </widget>
-             </item>
-            </layout>
-           </item>
-           <item>
             <layout class="QVBoxLayout" name="verticalLayout_3">
              <property name="spacing">
               <number>0</number>
@@ -608,7 +564,7 @@ background-color:none;
           <x>-1</x>
           <y>-2</y>
           <width>391</width>
-          <height>761</height>
+          <height>781</height>
          </rect>
         </property>
         <layout class="QVBoxLayout" name="verticalLayout_17">
@@ -628,7 +584,128 @@ background-color:none;
           <number>32</number>
          </property>
          <item>
-          <widget class="QLabel" name="label_7">
+          <layout class="QVBoxLayout" name="model">
+           <property name="spacing">
+            <number>0</number>
+           </property>
+           <item>
+            <widget class="QLabel" name="label_5">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">QLabel {
+color:gray;
+}</string>
+             </property>
+             <property name="text">
+              <string>Select Model</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QComboBox" name="modelCombo">
+             <property name="minimumSize">
+              <size>
+               <width>0</width>
+               <height>40</height>
+              </size>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">QComboBox{
+background-color:white;
+color:black;
+}</string>
+             </property>
+             <property name="frame">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+         <item>
+          <layout class="QHBoxLayout" name="horizontalLayout">
+           <property name="spacing">
+            <number>12</number>
+           </property>
+           <property name="topMargin">
+            <number>0</number>
+           </property>
+           <property name="rightMargin">
+            <number>0</number>
+           </property>
+           <item>
+            <layout class="QVBoxLayout" name="model_2">
+             <property name="spacing">
+              <number>0</number>
+             </property>
+             <item>
+              <widget class="QLabel" name="label_7">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+                 <horstretch>0</horstretch>
+                 <verstretch>0</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="styleSheet">
+                <string notr="true">QLabel {
+color:gray;
+}</string>
+               </property>
+               <property name="text">
+                <string>Confidence Threshold</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QSlider" name="confidenceSlider">
+               <property name="orientation">
+                <enum>Qt::Horizontal</enum>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <layout class="QVBoxLayout" name="model_3">
+             <property name="spacing">
+              <number>0</number>
+             </property>
+             <item>
+              <widget class="QLabel" name="label_11">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+                 <horstretch>0</horstretch>
+                 <verstretch>0</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="styleSheet">
+                <string notr="true">QLabel {
+color:gray;
+}</string>
+               </property>
+               <property name="text">
+                <string>IoU Threshold</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QSlider" name="iouSlider">
+               <property name="orientation">
+                <enum>Qt::Horizontal</enum>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+          </layout>
+         </item>
+         <item>
+          <widget class="QLabel" name="label_9">
            <property name="sizePolicy">
             <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
              <horstretch>0</horstretch>
@@ -674,7 +751,7 @@ background-color:none;
                <rect>
                 <x>0</x>
                 <y>0</y>
-                <width>161</width>
+                <width>171</width>
                 <height>84</height>
                </rect>
               </property>
@@ -759,7 +836,7 @@ background-color:none;
                <rect>
                 <x>0</x>
                 <y>0</y>
-                <width>161</width>
+                <width>171</width>
                 <height>84</height>
                </rect>
               </property>
@@ -785,7 +862,7 @@ background-color:none;
 }</string>
                  </property>
                  <property name="text">
-                  <string>Average Confidence</string>
+                  <string>Confidence Range</string>
                  </property>
                  <property name="alignment">
                   <set>Qt::AlignCenter</set>
@@ -848,7 +925,7 @@ background-color:none;
                <rect>
                 <x>0</x>
                 <y>0</y>
-                <width>161</width>
+                <width>171</width>
                 <height>84</height>
                </rect>
               </property>
@@ -933,7 +1010,7 @@ background-color:none;
                <rect>
                 <x>0</x>
                 <y>0</y>
-                <width>161</width>
+                <width>171</width>
                 <height>84</height>
                </rect>
               </property>
@@ -1022,7 +1099,7 @@ background-color:none;
                <rect>
                 <x>0</x>
                 <y>0</y>
-                <width>161</width>
+                <width>171</width>
                 <height>84</height>
                </rect>
               </property>
@@ -1107,7 +1184,7 @@ background-color:none;
                <rect>
                 <x>0</x>
                 <y>0</y>
-                <width>161</width>
+                <width>171</width>
                 <height>84</height>
                </rect>
               </property>
@@ -1196,7 +1273,7 @@ background-color:none;
                <rect>
                 <x>0</x>
                 <y>0</y>
-                <width>161</width>
+                <width>171</width>
                 <height>84</height>
                </rect>
               </property>
@@ -1281,7 +1358,7 @@ background-color:none;
                <rect>
                 <x>0</x>
                 <y>0</y>
-                <width>161</width>
+                <width>171</width>
                 <height>84</height>
                </rect>
               </property>
