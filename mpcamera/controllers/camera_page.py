@@ -48,24 +48,6 @@ from mpcamera.utils.morphometrics import (
 )
 
 
-def _safe_call(func, *args, default=None, log_prefix="camera_page"):
-    """Call `func(*args)` and return result or `default` on exception.
-
-    Use this to centralize short-lived exception handling and logging so the
-    main code isn't littered with tiny try/except blocks.
-    """
-    try:
-        return func(*args)
-    except Exception as e:
-        try:
-            print(
-                f"{log_prefix}: safe call {getattr(func, '__name__', str(func))} failed: {e}"
-            )
-        except Exception:
-            pass
-        return default
-
-
 def _find_pixmap_item(scene):
     """Return the first QGraphicsPixmapItem-like object from `scene` or None."""
     if scene is None:
