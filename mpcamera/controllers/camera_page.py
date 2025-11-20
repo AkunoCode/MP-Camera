@@ -524,6 +524,8 @@ class CameraPageController(QtCore.QObject):
             if not pix.isNull():
                 self._last_pixmap = pix
                 self._display_pixmap(pix)
+                # Ensure UI buttons reflect that an image is now loaded
+                self._update_ui_state()
                 self._run_inference(fname, is_temp=False)
 
     def _display_pixmap(self, pix: QtGui.QPixmap):
