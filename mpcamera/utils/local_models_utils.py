@@ -6,22 +6,30 @@ import cv2
 import numpy as np
 import os
 import json
-import base64
 import datetime
 import uuid
 import warnings
 
 # Suppress the torch load warning for cleaner logs
-warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filters.filterwarnings("ignore", category=FutureWarning)
 
 
 class LocalModelInference:
-    def __init__(self, model_path, num_classes, device=None):
+    def __init__(
+        self,
+        model_path,
+        num_classes,
+        confidence_threshold=0.5,
+        iou_threshold=0.4,
+        device=None,
+    ):
         """
         Initializes the model by automatically detecting architecture (ResNet50 vs 101).
         """
         self.model_path = model_path
         self.num_classes = num_classes
+        self.confidence_threshold = confidence_threshold
+        self.iou_threshold = iou_threshold
         self.device = (
             device if device else ("cuda" if torch.cuda.is_available() else "cpu")
         )
@@ -78,9 +86,11 @@ class LocalModelInference:
                 f"Could not load model as ResNet50 OR ResNet101. Error: {e}"
             )
 
-    def predict_json(self, image_path, confidence_threshold=0.5, class_map=None):
+    def predict_json(self, image_path, class_map=None):
         """
         Runs prediction and returns the JSON string directly.
+        Uses self.confidence_threshold and self.iou_threshold for filtering.
+        The output_image object is now completely excluded from the final JSON structure.
         """
         # 1. Load Image
         img = cv2.imread(image_path)
@@ -99,15 +109,32 @@ class LocalModelInference:
         with torch.no_grad():
             prediction = self.model([img_tensor])[0]
 
-        # 4. Filter Results
-        keep = prediction["scores"] > confidence_threshold
+        # 4. Filter Results by Confidence
+        conf_keep = prediction["scores"] > self.confidence_threshold
 
-        boxes = prediction["boxes"][keep].cpu().numpy()
-        scores = prediction["scores"][keep].cpu().numpy()
-        labels = prediction["labels"][keep].cpu().numpy()
-        masks = prediction["masks"][keep].cpu().numpy()
+        boxes = prediction["boxes"][conf_keep]
+        scores = prediction["scores"][conf_keep]
+        labels = prediction["labels"][conf_keep]
+        masks = prediction["masks"][conf_keep]
 
-        # 5. Format Predictions List
+        # 5. Filter Results using NMS (IoU Threshold)
+        if len(boxes) > 0:
+            # Apply NMS using the instance variable
+            nms_keep = torchvision.ops.nms(boxes, scores, self.iou_threshold)
+
+            # Keep only the detections selected by NMS
+            boxes = boxes[nms_keep].cpu().numpy()
+            scores = scores[nms_keep].cpu().numpy()
+            labels = labels[nms_keep].cpu().numpy()
+            masks = masks[nms_keep].cpu().numpy()
+        else:
+            # If no boxes remain after confidence filter, convert empty tensors to numpy
+            boxes = boxes.cpu().numpy()
+            scores = scores.cpu().numpy()
+            labels = labels.cpu().numpy()
+            masks = masks.cpu().numpy()
+
+        # 6. Format Predictions List
         formatted_predictions = []
 
         for i in range(len(boxes)):
@@ -155,21 +182,9 @@ class LocalModelInference:
             }
             formatted_predictions.append(pred_obj)
 
-        # 6. Construct Final JSON Object
+        # 7. Construct Final JSON Object (Excluding output_image)
         final_output = {
             "count_objects": len(formatted_predictions),
-            "output_image": {
-                "type": "base64",
-                "value": self._encode_image_base64(image_path),
-                "video_metadata": {
-                    "video_identifier": "image",
-                    "frame_number": 0,
-                    "frame_timestamp": datetime.datetime.now().isoformat(),
-                    "fps": 30,
-                    "measured_fps": None,
-                    "comes_from_video_file": None,
-                },
-            },
             "predictions": {
                 "image": {"width": w, "height": h},
                 "predictions": formatted_predictions,
@@ -178,40 +193,3 @@ class LocalModelInference:
 
         # Return as string
         return json.dumps([final_output], indent=2)
-
-    def _encode_image_base64(self, image_path):
-        """Helper to convert image file to base64 string."""
-        with open(image_path, "rb") as image_file:
-            return base64.b64encode(image_file.read()).decode("utf-8")
-
-
-# --- USAGE EXAMPLE ---
-if __name__ == "__main__":
-    # Example Class Map
-    CLASS_MAP = {
-        0: "Background",
-        1: "Fragment",
-        2: "Pellet",
-        3: "Line",
-        4: "Sheet",
-        5: "Foam",
-    }
-
-    # Path to a ResNet101 or ResNet50 model
-    MODEL_PATH = "models/PH-optimized-maskrcnn-resnet101.pth"
-    IMAGE_PATH = "test_image.jpg"
-
-    try:
-        # 1. Init Engine
-        inference_engine = LocalModelInference(model_path=MODEL_PATH, num_classes=6)
-
-        # 2. Get JSON Response directly
-        json_response = inference_engine.predict_json(
-            IMAGE_PATH, confidence_threshold=0.5, class_map=CLASS_MAP
-        )
-
-        # 3. Use the response (e.g., return it to an API client)
-        print(json_response)
-
-    except Exception as e:
-        print(f"Error: {e}")
