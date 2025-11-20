@@ -11,6 +11,10 @@ try:
     from mpcamera.services.roboflow import RoboflowClient
 except Exception:
     RoboflowClient = None
+try:
+    from mpcamera.services.directus import DirectusClient
+except Exception:
+    DirectusClient = None
 
 from mpcamera.utils.camera_utils import (
     append_log,
@@ -1197,80 +1201,142 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
 
                                                             # set table cells (columns: 3..8)
                                                             try:
+                                                                # Area (display with μm², raw float in UserRole)
+                                                                if A_um2 is not None:
+                                                                    item = QtWidgets.QTableWidgetItem(
+                                                                        f"{A_um2:.2f} μm²"
+                                                                    )
+                                                                    try:
+                                                                        item.setData(
+                                                                            QtCore.Qt.ItemDataRole.UserRole,
+                                                                            float(
+                                                                                A_um2
+                                                                            ),
+                                                                        )
+                                                                    except Exception:
+                                                                        pass
+                                                                else:
+                                                                    item = QtWidgets.QTableWidgetItem(
+                                                                        ""
+                                                                    )
                                                                 inf_table.setItem(
-                                                                    r,
-                                                                    3,
-                                                                    QtWidgets.QTableWidgetItem(
-                                                                        f"{A_um2:.2f}"
-                                                                        if A_um2
-                                                                        is not None
-                                                                        else ""
-                                                                    ),
+                                                                    r, 3, item
                                                                 )
                                                             except Exception:
                                                                 pass
                                                             try:
+                                                                # Perimeter (μm)
+                                                                if P_um is not None:
+                                                                    item = QtWidgets.QTableWidgetItem(
+                                                                        f"{P_um:.2f} μm"
+                                                                    )
+                                                                    try:
+                                                                        item.setData(
+                                                                            QtCore.Qt.ItemDataRole.UserRole,
+                                                                            float(P_um),
+                                                                        )
+                                                                    except Exception:
+                                                                        pass
+                                                                else:
+                                                                    item = QtWidgets.QTableWidgetItem(
+                                                                        ""
+                                                                    )
                                                                 inf_table.setItem(
-                                                                    r,
-                                                                    4,
-                                                                    QtWidgets.QTableWidgetItem(
-                                                                        f"{P_um:.2f}"
-                                                                        if P_um
-                                                                        is not None
-                                                                        else ""
-                                                                    ),
+                                                                    r, 4, item
                                                                 )
                                                             except Exception:
                                                                 pass
                                                             try:
+                                                                # Major axis (μm)
+                                                                if Lmaj_um is not None:
+                                                                    item = QtWidgets.QTableWidgetItem(
+                                                                        f"{Lmaj_um:.2f} μm"
+                                                                    )
+                                                                    try:
+                                                                        item.setData(
+                                                                            QtCore.Qt.ItemDataRole.UserRole,
+                                                                            float(
+                                                                                Lmaj_um
+                                                                            ),
+                                                                        )
+                                                                    except Exception:
+                                                                        pass
+                                                                else:
+                                                                    item = QtWidgets.QTableWidgetItem(
+                                                                        ""
+                                                                    )
                                                                 inf_table.setItem(
-                                                                    r,
-                                                                    5,
-                                                                    QtWidgets.QTableWidgetItem(
-                                                                        f"{Lmaj_um:.2f}"
-                                                                        if Lmaj_um
-                                                                        is not None
-                                                                        else ""
-                                                                    ),
+                                                                    r, 5, item
                                                                 )
                                                             except Exception:
                                                                 pass
                                                             try:
+                                                                # Minor axis (μm)
+                                                                if Lmin_um is not None:
+                                                                    item = QtWidgets.QTableWidgetItem(
+                                                                        f"{Lmin_um:.2f} μm"
+                                                                    )
+                                                                    try:
+                                                                        item.setData(
+                                                                            QtCore.Qt.ItemDataRole.UserRole,
+                                                                            float(
+                                                                                Lmin_um
+                                                                            ),
+                                                                        )
+                                                                    except Exception:
+                                                                        pass
+                                                                else:
+                                                                    item = QtWidgets.QTableWidgetItem(
+                                                                        ""
+                                                                    )
                                                                 inf_table.setItem(
-                                                                    r,
-                                                                    6,
-                                                                    QtWidgets.QTableWidgetItem(
-                                                                        f"{Lmin_um:.2f}"
-                                                                        if Lmin_um
-                                                                        is not None
-                                                                        else ""
-                                                                    ),
+                                                                    r, 6, item
                                                                 )
                                                             except Exception:
                                                                 pass
                                                             try:
+                                                                # Equivalent circular diameter (μm)
+                                                                if Deq is not None:
+                                                                    item = QtWidgets.QTableWidgetItem(
+                                                                        f"{Deq:.2f} μm"
+                                                                    )
+                                                                    try:
+                                                                        item.setData(
+                                                                            QtCore.Qt.ItemDataRole.UserRole,
+                                                                            float(Deq),
+                                                                        )
+                                                                    except Exception:
+                                                                        pass
+                                                                else:
+                                                                    item = QtWidgets.QTableWidgetItem(
+                                                                        ""
+                                                                    )
                                                                 inf_table.setItem(
-                                                                    r,
-                                                                    7,
-                                                                    QtWidgets.QTableWidgetItem(
-                                                                        f"{Deq:.2f}"
-                                                                        if Deq
-                                                                        is not None
-                                                                        else ""
-                                                                    ),
+                                                                    r, 7, item
                                                                 )
                                                             except Exception:
                                                                 pass
                                                             try:
+                                                                # Skeleton length (μm)
+                                                                if Lsk_um is not None:
+                                                                    item = QtWidgets.QTableWidgetItem(
+                                                                        f"{Lsk_um:.2f} μm"
+                                                                    )
+                                                                    try:
+                                                                        item.setData(
+                                                                            QtCore.Qt.ItemDataRole.UserRole,
+                                                                            float(
+                                                                                Lsk_um
+                                                                            ),
+                                                                        )
+                                                                    except Exception:
+                                                                        pass
+                                                                else:
+                                                                    item = QtWidgets.QTableWidgetItem(
+                                                                        ""
+                                                                    )
                                                                 inf_table.setItem(
-                                                                    r,
-                                                                    8,
-                                                                    QtWidgets.QTableWidgetItem(
-                                                                        f"{Lsk_um:.2f}"
-                                                                        if Lsk_um
-                                                                        is not None
-                                                                        else ""
-                                                                    ),
+                                                                    r, 8, item
                                                                 )
                                                             except Exception:
                                                                 pass
@@ -1554,6 +1620,367 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
                                 w.setCursor(hand)
                         except Exception:
                             pass
+                except Exception:
+                    pass
+
+                # Save results button (push selected rows to Directus microplastics)
+                try:
+                    save_btn = camera_page.findChild(
+                        QtWidgets.QPushButton, "saveResultButton"
+                    )
+                except Exception:
+                    save_btn = None
+
+                def _extract_payload_from_row(row_idx: int):
+                    try:
+                        tbl = camera_page.findChild(
+                            QtWidgets.QTableWidget, "inferenceTable"
+                        )
+                        if tbl is None:
+                            return None
+
+                        # helper to read raw float from UserRole or parse text
+                        def _read_float_at(col):
+                            try:
+                                it = tbl.item(row_idx, col)
+                                if it is None:
+                                    return None
+                                v = it.data(QtCore.Qt.ItemDataRole.UserRole)
+                                if v is not None:
+                                    try:
+                                        return float(v)
+                                    except Exception:
+                                        pass
+                                # fallback: parse displayed text by removing non-numeric
+                                txt = (it.text() or "").strip()
+                                if not txt:
+                                    return None
+                                # remove unit suffixes like 'μm' or 'μm²'
+                                txt = txt.replace("μm²", "").replace("μm", "").strip()
+                                # remove commas
+                                txt = txt.replace(",", "")
+                                try:
+                                    return float(txt)
+                                except Exception:
+                                    return None
+                            except Exception:
+                                return None
+
+                        # columns mapping: 0=shape,1=confidence,2=color,3=area,4=perim,5=major,6=minor,7=deq,8=skeleton
+                        shape_it = tbl.item(row_idx, 0)
+                        shape = shape_it.text() if shape_it is not None else None
+                        conf_it = tbl.item(row_idx, 1)
+                        confidence = None
+                        try:
+                            confidence = (
+                                float(conf_it.text())
+                                if conf_it is not None and conf_it.text()
+                                else None
+                            )
+                        except Exception:
+                            confidence = None
+                        color_it = tbl.item(row_idx, 2)
+                        color = color_it.text() if color_it is not None else None
+
+                        area = _read_float_at(3)
+                        perimeter = _read_float_at(4)
+                        major = _read_float_at(5)
+                        minor = _read_float_at(6)
+                        deq = _read_float_at(7)
+                        skeleton = _read_float_at(8)
+
+                        # aspect ratio: major/minor if available
+                        aspect_ratio = None
+                        try:
+                            if major is not None and minor is not None and minor != 0:
+                                aspect_ratio = float(major) / float(minor)
+                        except Exception:
+                            aspect_ratio = None
+
+                        # um_per_pixel: recompute from current pixmap and magnification
+                        um_per_px = None
+                        try:
+                            # determine image dims similar to inference code
+                            P_width = None
+                            P_height = None
+                            scene = cam_view.scene() if cam_view is not None else None
+                            pix_item = None
+                            if scene is not None:
+                                for it in scene.items():
+                                    try:
+                                        from PyQt6 import QtWidgets as _qtw
+
+                                        if isinstance(it, _qtw.QGraphicsPixmapItem):
+                                            pix_item = it
+                                            break
+                                    except Exception:
+                                        if hasattr(it, "pixmap"):
+                                            pix_item = it
+                                            break
+                            if pix_item is not None:
+                                try:
+                                    pm = pix_item.pixmap()
+                                    P_width = int(pm.width())
+                                    P_height = int(pm.height())
+                                except Exception:
+                                    P_width = None
+                                    P_height = None
+                            if P_width is None:
+                                pix = getattr(camera_page, "_last_pixmap", None)
+                                if pix is not None:
+                                    try:
+                                        P_width = int(pix.width())
+                                        P_height = int(pix.height())
+                                    except Exception:
+                                        P_width = None
+                                        P_height = None
+
+                            mag_w = camera_page.findChild(
+                                QtWidgets.QDoubleSpinBox, "magnificationSpinbox"
+                            )
+                            M_total = (
+                                float(mag_w.value()) if mag_w is not None else None
+                            )
+                            if P_width and P_height and M_total and M_total > 0:
+                                um_res = calculate_micrometers_per_pixel(
+                                    M_total, P_width, P_height
+                                )
+                                um_per_px = float(
+                                    um_res.get("average_multiplier_um", 0)
+                                )
+                        except Exception:
+                            um_per_px = None
+
+                        payload = {
+                            "shape": shape,
+                            "confidence_level": confidence,
+                            "color": color,
+                            "area_um2": area,
+                            "perimeter_um": perimeter,
+                            "major_axis_um": major,
+                            "minor_axis_um": minor,
+                            "equivalent_circular_diameter_um": deq,
+                            "skeleton_length_um": skeleton,
+                            "aspect_ratio": aspect_ratio,
+                            "um_per_pixel": um_per_px,
+                        }
+                        return payload
+                    except Exception:
+                        return None
+
+                def _on_save_results():
+                    try:
+                        if DirectusClient is None:
+                            try:
+                                QtWidgets.QMessageBox.information(
+                                    camera_page,
+                                    "Directus Not Configured",
+                                    "Directus client not available.",
+                                )
+                            except Exception:
+                                pass
+                            return
+
+                        tbl = camera_page.findChild(
+                            QtWidgets.QTableWidget, "inferenceTable"
+                        )
+                        if tbl is None:
+                            return
+                        # selected rows or all
+                        try:
+                            sels = tbl.selectionModel().selectedRows()
+                        except Exception:
+                            sels = []
+                        rows = (
+                            [s.row() for s in sels]
+                            if sels
+                            else list(range(tbl.rowCount()))
+                        )
+
+                        to_push = []
+                        for r in rows:
+                            payload = _extract_payload_from_row(r)
+                            if payload is not None:
+                                to_push.append(payload)
+
+                        if not to_push:
+                            try:
+                                QtWidgets.QMessageBox.information(
+                                    camera_page,
+                                    "No Data",
+                                    "No valid measurements to save.",
+                                )
+                            except Exception:
+                                pass
+                            return
+
+                        # run background thread to push to Directus
+                        def _worker(push_list):
+                            try:
+                                client = DirectusClient()
+                            except Exception:
+                                client = None
+
+                            # attempt to upload current image (if any) once and attach to all items
+                            uploaded_file_id = None
+                            try:
+                                if client is not None:
+                                    # locate pixmap in scene like other helpers
+                                    scene = (
+                                        cam_view.scene()
+                                        if cam_view is not None
+                                        else None
+                                    )
+                                    pix_item = None
+                                    if scene is not None:
+                                        for it in scene.items():
+                                            try:
+                                                from PyQt6 import QtWidgets as _qtw
+
+                                                if isinstance(
+                                                    it, _qtw.QGraphicsPixmapItem
+                                                ):
+                                                    pix_item = it
+                                                    break
+                                            except Exception:
+                                                if hasattr(it, "pixmap"):
+                                                    pix_item = it
+                                                    break
+
+                                    tmp_path = None
+                                    pix = None
+                                    if pix_item is not None:
+                                        try:
+                                            pix = pix_item.pixmap()
+                                        except Exception:
+                                            pix = None
+                                    if pix is None:
+                                        pix = getattr(camera_page, "_last_pixmap", None)
+                                    if pix is not None:
+                                        # save to temp file
+                                        tmp = tempfile.NamedTemporaryFile(
+                                            delete=False, suffix=".jpg"
+                                        )
+                                        tmp_path = tmp.name
+                                        tmp.close()
+                                        try:
+                                            pix.save(tmp_path, "JPG")
+                                        except Exception:
+                                            try:
+                                                qm = pix.toImage()
+                                                qm.save(tmp_path, "JPG")
+                                            except Exception:
+                                                tmp_path = None
+
+                                    if tmp_path is not None and os.path.exists(
+                                        tmp_path
+                                    ):
+                                        try:
+                                            resp = client.upload_file(tmp_path)
+                                            # Directus returns JSON {"data": {"id": ...}}
+                                            uploaded_file_id = (
+                                                (resp.get("data") or {}).get("id")
+                                                if isinstance(resp, dict)
+                                                else None
+                                            )
+                                        except Exception:
+                                            uploaded_file_id = None
+                                        finally:
+                                            try:
+                                                if tmp_path and os.path.exists(
+                                                    tmp_path
+                                                ):
+                                                    os.remove(tmp_path)
+                                            except Exception:
+                                                pass
+                            except Exception:
+                                # any upload failure should not abort pushing metadata
+                                uploaded_file_id = None
+
+                            results = []
+                            for itm in push_list:
+                                try:
+                                    if client is None:
+                                        raise RuntimeError(
+                                            "Directus client not available"
+                                        )
+
+                                    # attach uploaded image id if present
+                                    try:
+                                        if (
+                                            uploaded_file_id is not None
+                                            and "image" not in itm
+                                        ):
+                                            itm["image"] = uploaded_file_id
+                                    except Exception:
+                                        pass
+
+                                    # attach currently-selected soil sample id as `sample_source` if available
+                                    try:
+                                        soil_combo = camera_page.findChild(
+                                            QtWidgets.QComboBox, "soilCombo"
+                                        )
+                                        sample_id = None
+                                        try:
+                                            sample_id = (
+                                                soil_combo.currentData()
+                                                if soil_combo is not None
+                                                else None
+                                            )
+                                        except Exception:
+                                            sample_id = None
+                                        if sample_id:
+                                            # only set if not already present
+                                            if "sample_source" not in itm:
+                                                itm["sample_source"] = sample_id
+                                    except Exception:
+                                        pass
+
+                                    resp = client.create_microplastic(itm)
+                                    results.append((True, resp))
+                                except Exception:
+                                    tb = traceback.format_exc()
+                                    results.append((False, tb))
+
+                            # notify on main thread
+                            try:
+                                success_count = sum(1 for s, _ in results if s)
+
+                                def _show_result():
+                                    try:
+                                        if success_count > 0:
+                                            QtWidgets.QMessageBox.information(
+                                                camera_page,
+                                                "Saved",
+                                                f"Successfully saved {success_count} records to Directus.",
+                                            )
+                                        else:
+                                            QtWidgets.QMessageBox.critical(
+                                                camera_page,
+                                                "Failed",
+                                                "Failed to save records to Directus. See console for details.",
+                                            )
+                                    except Exception:
+                                        pass
+
+                                QtCore.QTimer.singleShot(0, _show_result)
+                            except Exception:
+                                pass
+
+                        try:
+                            Thread(target=_worker, args=(to_push,), daemon=True).start()
+                        except Exception:
+                            try:
+                                _worker(to_push)
+                            except Exception:
+                                pass
+
+                    except Exception:
+                        pass
+
+                try:
+                    if save_btn is not None:
+                        save_btn.clicked.connect(_on_save_results)
                 except Exception:
                     pass
 
@@ -1983,75 +2410,147 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
                                                     Lsk_um = None
 
                                                 try:
-                                                    inf_table.setItem(
-                                                        r,
-                                                        3,
-                                                        QtWidgets.QTableWidgetItem(
-                                                            f"{A_um2:.2f}"
-                                                            if A_um2 is not None
-                                                            else ""
-                                                        ),
-                                                    )
+                                                    # Area (display with μm², raw float in UserRole)
+                                                    if A_um2 is not None:
+                                                        item = (
+                                                            QtWidgets.QTableWidgetItem(
+                                                                f"{A_um2:.2f} μm²"
+                                                            )
+                                                        )
+                                                        try:
+                                                            item.setData(
+                                                                QtCore.Qt.ItemDataRole.UserRole,
+                                                                float(A_um2),
+                                                            )
+                                                        except Exception:
+                                                            pass
+                                                    else:
+                                                        item = (
+                                                            QtWidgets.QTableWidgetItem(
+                                                                ""
+                                                            )
+                                                        )
+                                                    inf_table.setItem(r, 3, item)
                                                 except Exception:
                                                     pass
                                                 try:
-                                                    inf_table.setItem(
-                                                        r,
-                                                        4,
-                                                        QtWidgets.QTableWidgetItem(
-                                                            f"{P_um:.2f}"
-                                                            if P_um is not None
-                                                            else ""
-                                                        ),
-                                                    )
+                                                    # Perimeter (μm)
+                                                    if P_um is not None:
+                                                        item = (
+                                                            QtWidgets.QTableWidgetItem(
+                                                                f"{P_um:.2f} μm"
+                                                            )
+                                                        )
+                                                        try:
+                                                            item.setData(
+                                                                QtCore.Qt.ItemDataRole.UserRole,
+                                                                float(P_um),
+                                                            )
+                                                        except Exception:
+                                                            pass
+                                                    else:
+                                                        item = (
+                                                            QtWidgets.QTableWidgetItem(
+                                                                ""
+                                                            )
+                                                        )
+                                                    inf_table.setItem(r, 4, item)
                                                 except Exception:
                                                     pass
                                                 try:
-                                                    inf_table.setItem(
-                                                        r,
-                                                        5,
-                                                        QtWidgets.QTableWidgetItem(
-                                                            f"{Lmaj_um:.2f}"
-                                                            if Lmaj_um is not None
-                                                            else ""
-                                                        ),
-                                                    )
+                                                    # Major axis (μm)
+                                                    if Lmaj_um is not None:
+                                                        item = (
+                                                            QtWidgets.QTableWidgetItem(
+                                                                f"{Lmaj_um:.2f} μm"
+                                                            )
+                                                        )
+                                                        try:
+                                                            item.setData(
+                                                                QtCore.Qt.ItemDataRole.UserRole,
+                                                                float(Lmaj_um),
+                                                            )
+                                                        except Exception:
+                                                            pass
+                                                    else:
+                                                        item = (
+                                                            QtWidgets.QTableWidgetItem(
+                                                                ""
+                                                            )
+                                                        )
+                                                    inf_table.setItem(r, 5, item)
                                                 except Exception:
                                                     pass
                                                 try:
-                                                    inf_table.setItem(
-                                                        r,
-                                                        6,
-                                                        QtWidgets.QTableWidgetItem(
-                                                            f"{Lmin_um:.2f}"
-                                                            if Lmin_um is not None
-                                                            else ""
-                                                        ),
-                                                    )
+                                                    # Minor axis (μm)
+                                                    if Lmin_um is not None:
+                                                        item = (
+                                                            QtWidgets.QTableWidgetItem(
+                                                                f"{Lmin_um:.2f} μm"
+                                                            )
+                                                        )
+                                                        try:
+                                                            item.setData(
+                                                                QtCore.Qt.ItemDataRole.UserRole,
+                                                                float(Lmin_um),
+                                                            )
+                                                        except Exception:
+                                                            pass
+                                                    else:
+                                                        item = (
+                                                            QtWidgets.QTableWidgetItem(
+                                                                ""
+                                                            )
+                                                        )
+                                                    inf_table.setItem(r, 6, item)
                                                 except Exception:
                                                     pass
                                                 try:
-                                                    inf_table.setItem(
-                                                        r,
-                                                        7,
-                                                        QtWidgets.QTableWidgetItem(
-                                                            f"{Deq:.2f}"
-                                                            if Deq is not None
-                                                            else ""
-                                                        ),
-                                                    )
+                                                    # Equivalent circular diameter (μm)
+                                                    if Deq is not None:
+                                                        item = (
+                                                            QtWidgets.QTableWidgetItem(
+                                                                f"{Deq:.2f} μm"
+                                                            )
+                                                        )
+                                                        try:
+                                                            item.setData(
+                                                                QtCore.Qt.ItemDataRole.UserRole,
+                                                                float(Deq),
+                                                            )
+                                                        except Exception:
+                                                            pass
+                                                    else:
+                                                        item = (
+                                                            QtWidgets.QTableWidgetItem(
+                                                                ""
+                                                            )
+                                                        )
+                                                    inf_table.setItem(r, 7, item)
                                                 except Exception:
                                                     pass
                                                 try:
-                                                    inf_table.setItem(
-                                                        r,
-                                                        8,
-                                                        QtWidgets.QTableWidgetItem(
-                                                            f"{Lsk_um:.2f}"
-                                                            if Lsk_um is not None
-                                                            else ""
-                                                        ),
-                                                    )
+                                                    # Skeleton length (μm)
+                                                    if Lsk_um is not None:
+                                                        item = (
+                                                            QtWidgets.QTableWidgetItem(
+                                                                f"{Lsk_um:.2f} μm"
+                                                            )
+                                                        )
+                                                        try:
+                                                            item.setData(
+                                                                QtCore.Qt.ItemDataRole.UserRole,
+                                                                float(Lsk_um),
+                                                            )
+                                                        except Exception:
+                                                            pass
+                                                    else:
+                                                        item = (
+                                                            QtWidgets.QTableWidgetItem(
+                                                                ""
+                                                            )
+                                                        )
+                                                    inf_table.setItem(r, 8, item)
                                                 except Exception:
                                                     pass
                                             except Exception:
