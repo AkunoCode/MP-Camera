@@ -213,7 +213,7 @@ background-color:white;
           <x>0</x>
           <y>0</y>
           <width>711</width>
-          <height>769</height>
+          <height>761</height>
          </rect>
         </property>
         <layout class="QVBoxLayout" name="verticalLayout_5">
@@ -518,7 +518,7 @@ font-weight: bold;
                <property name="minimumSize">
                 <size>
                  <width>0</width>
-                 <height>360</height>
+                 <height>350</height>
                 </size>
                </property>
                <property name="maximum">
@@ -608,7 +608,7 @@ background-color:black;
                <property name="minimumSize">
                 <size>
                  <width>0</width>
-                 <height>355</height>
+                 <height>350</height>
                 </size>
                </property>
                <property name="maximum">

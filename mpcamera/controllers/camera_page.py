@@ -37,6 +37,12 @@ from mpcamera.utils.morphometrics import (
     calculate_skeleton_length_um,
 )
 
+# Image adjustment util
+try:
+    from mpcamera.utils.image_utils import adjust_brightness_contrast
+except Exception:
+    adjust_brightness_contrast = None
+
 # Import the local inference class
 try:
     from mpcamera.utils.local_models_utils import LocalModelInference
@@ -142,6 +148,9 @@ class CameraPageController(QtCore.QObject):
             "mag_spin": self.page.findChild(
                 QtWidgets.QDoubleSpinBox, "magnificationSpinbox"
             ),
+            # sliders for brightness / contrast
+            "brightness_slider": self.page.findChild(QtWidgets.QSlider, "brightnessSlider"),
+            "contrast_slider": self.page.findChild(QtWidgets.QSlider, "contrastSlider"),
             # Sliders
             "conf_slider": self.page.findChild(QtWidgets.QSlider, "confidenceSlider"),
             "iou_slider": self.page.findChild(QtWidgets.QSlider, "iouSlider"),
@@ -198,6 +207,15 @@ class CameraPageController(QtCore.QObject):
         if ui["iou_slider"] is not None:
             ui["iou_slider"].sliderReleased.connect(self._on_param_changed)
             ui["iou_slider"].valueChanged.connect(self._update_param_labels)
+        # Brightness/Contrast sliders update the displayed frame immediately
+        if ui.get("brightness_slider") is not None:
+            ui["brightness_slider"].setRange(0, 100)
+            ui["brightness_slider"].setValue(50)
+            ui["brightness_slider"].valueChanged.connect(self._on_brightness_contrast_changed)
+        if ui.get("contrast_slider") is not None:
+            ui["contrast_slider"].setRange(0, 100)
+            ui["contrast_slider"].setValue(50)
+            ui["contrast_slider"].valueChanged.connect(self._on_brightness_contrast_changed)
 
         # Worker signals
         self.inference_finished_signal.connect(self._on_inference_finished)
@@ -236,6 +254,12 @@ class CameraPageController(QtCore.QObject):
         # Update the slider labels to show percentage values
         try:
             self._update_param_labels()
+        except Exception:
+            pass
+
+        # Ensure any brightness/contrast defaults are applied to current image
+        try:
+            self._apply_adjustments_and_refresh()
         except Exception:
             pass
 
@@ -479,6 +503,50 @@ class CameraPageController(QtCore.QObject):
         except Exception:
             pass
 
+    def _on_brightness_contrast_changed(self, _val=None):
+        """Handler when brightness/contrast sliders change; refresh displayed frame."""
+        try:
+            self._apply_adjustments_and_refresh()
+        except Exception:
+            pass
+
+    def _apply_adjustments_and_refresh(self):
+        """Apply brightness/contrast to the latest raw frame (if any) and update display/pixmap.
+
+        This ensures both what the user sees and the image sent to inference use the adjusted image.
+        """
+        if adjust_brightness_contrast is None:
+            return
+
+        # Prefer raw image if available, otherwise use current frame
+        raw = getattr(self, "_raw_frame_np", None)
+        if raw is None:
+            raw = self._current_frame_np
+        if raw is None:
+            return
+
+        # Read slider values (0-100)
+        b_val = self.ui.get("brightness_slider").value() if self.ui.get("brightness_slider") is not None else 50
+        c_val = self.ui.get("contrast_slider").value() if self.ui.get("contrast_slider") is not None else 50
+
+        try:
+            adjusted = adjust_brightness_contrast(raw, brightness_pct=b_val, contrast_pct=c_val)
+        except Exception:
+            adjusted = raw
+
+        # Update current frame used for color extraction and for saving to disk
+        self._current_frame_np = adjusted
+
+        # Update displayed pixmap
+        try:
+            frame_rgb = cv2.cvtColor(adjusted, cv2.COLOR_BGR2RGB)
+            h, w, ch = frame_rgb.shape
+            qimg = QtGui.QImage(frame_rgb.data, w, h, ch * w, QtGui.QImage.Format.Format_RGB888)
+            self._last_pixmap = QtGui.QPixmap.fromImage(qimg.copy())
+            self._display_pixmap(self._last_pixmap)
+        except Exception:
+            pass
+
     def _on_model_changed(self):
         """Update config or local state when model changes."""
         if self.ui["model_combo"] is None:
@@ -555,17 +623,10 @@ class CameraPageController(QtCore.QObject):
         ret, frame = self._vc.read()
         if ret:
             try:
-                # Store BGR frame for color extraction
-                self._current_frame_np = frame
-
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                h, w, ch = frame_rgb.shape
-                qimg = QtGui.QImage(
-                    frame_rgb.data, w, h, ch * w, QtGui.QImage.Format.Format_RGB888
-                )
-                # Copy to avoid memory issues
-                self._last_pixmap = QtGui.QPixmap.fromImage(qimg.copy())
-                self._display_pixmap(self._last_pixmap)
+                # Keep the raw BGR frame and apply any brightness/contrast adjustments
+                self._raw_frame_np = frame.copy()
+                # Apply adjustments and refresh the displayed pixmap (also updates _current_frame_np)
+                self._apply_adjustments_and_refresh()
             except Exception:
                 pass
 
@@ -586,15 +647,30 @@ class CameraPageController(QtCore.QObject):
             self._update_ui_state()
 
             # Load raw image for color analysis
-            self._current_frame_np = cv2.imread(fname)
+            img = cv2.imread(fname)
+            if img is None:
+                return
 
-            pix = QtGui.QPixmap(fname)
-            if not pix.isNull():
-                self._last_pixmap = pix
-                self._display_pixmap(pix)
-                # Ensure UI buttons reflect that an image is now loaded
-                self._update_ui_state()
-                self._run_inference(fname, is_temp=False)
+            # Store raw and apply adjustments
+            self._raw_frame_np = img.copy()
+            self._apply_adjustments_and_refresh()
+
+            # Ensure UI buttons reflect that an image is now loaded
+            self._update_ui_state()
+
+            # Save adjusted image to a temp file and run inference on the adjusted image
+            try:
+                t = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
+                t.close()
+                # _current_frame_np holds the adjusted BGR image
+                if self._current_frame_np is not None:
+                    cv2.imwrite(t.name, self._current_frame_np)
+                    self._run_inference(t.name, is_temp=True)
+                else:
+                    # fallback: run inference on original file
+                    self._run_inference(fname, is_temp=False)
+            except Exception as e:
+                print(f"Failed to run inference on uploaded image: {e}")
 
     def _display_pixmap(self, pix: QtGui.QPixmap):
         view = self.ui["cam_view"]
