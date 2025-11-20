@@ -64,11 +64,11 @@ class CameraPageController(QtCore.QObject):
     LOCAL_NUM_CLASSES = 6
     CLASS_MAP = {
         0: "Background",
-        1: "Fragment",
-        2: "Pellet",
-        3: "Fiber",
+        1: "Fiber",
+        2: "Foam",
+        3: "Fragment",
         4: "Sheet",
-        5: "Foam",
+        5: "Film",
     }
 
     def __init__(
