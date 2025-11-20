@@ -1,142 +1,72 @@
-# Roboflow / Inference GUI (PyQt5)
+# SoilSight GUI: Microplastic Morphometric Analysis Tool
 
-A small desktop GUI that uploads images or streams webcam frames to a Roboflow-like inference workflow and displays the JSON result and any visualization returned by the workflow.
+![Project Status](https://img.shields.io/badge/Status-Thesis_Project-blue)
+![Python](https://img.shields.io/badge/Python-3.10%2B-yellow)
+![Framework](https://img.shields.io/badge/Framework-PyQt6-green)
+![AI](https://img.shields.io/badge/Inference-Roboflow%20%2B%20PyTorch-orange)
 
-This repository was refactored into a small package. The launcher is `main.py` and the app logic lives in the `mpcamera/` package.
+## 📖 Overview
 
-## Project layout
+**SoilSight** is a desktop application that automates detection and morphometric analysis of microplastic particles from microscopy images and live camera feeds. It reduces manual annotation effort by combining instance segmentation models (PyTorch) with a PyQt6-based GUI and optional cloud integrations (Roboflow, Directus).
 
-- `main.py` — small application launcher (starts the Qt event loop).
-- `mpcamera/` — package containing the refactored application code:
-  - `mpcamera/ui.py` — the `MainWindow` UI class (PyQt5 widgets and wiring).
-  - `mpcamera/workers.py` — background threads (`Worker`, `VideoWorker`) that call the inference SDK.
-  - `mpcamera/utils.py` — utility helpers (e.g. `find_base64_image`).
-- `requirements.txt` — Python dependencies (install into a virtualenv).
+This repository contains the GUI, local model artifacts, inference helpers, and service connectors used for data export and remote model hosting.
 
-## Quickstart (Windows PowerShell)
+## ✨ Key Features
 
-1. Create and activate a virtual environment, then install dependencies:
+- **Instance Segmentation:** Detects particles and displays segmentation masks and confidence scores.
+- **Morphometrics:** Computes area, perimeter, equivalent circular diameter, aspect ratio, circularity, skeleton length, and other shape metrics.
+- **Color Analysis:** Extracts color composition for each detected particle.
+- **Live & Batch Processing:** Works with live camera feeds (microscope cameras) and static image batches.
+- **Services Integration:** Supports Directus for record storage and Roboflow for remote inference/annotations via `services/` connectors.
+- **Extensible UI:** Separate pages for Camera, Farm (project management), and Samples.
+
+## Quickstart
+
+Prerequisites:
+
+- Python 3.10 or newer (project uses a `venv` by default).
+- A GPU is recommended for local inference with PyTorch, but CPU will work for smaller images or testing.
+
+Basic setup (PowerShell example):
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+python -m venv .venv311
+.\.venv311\Scripts\Activate.ps1
 pip install -r requirements.txt
-```
-
-2. Provide an API key for the inference service. Two options:
-
-- Set an environment variable for the current session (PowerShell):
-
-```powershell
-$env:ROBOFLOW_API_KEY = 'YOUR_API_KEY_HERE'
-```
-
-- Or create a `.env` file in the project root with:
-
-```text
-ROBOFLOW_API_KEY=YOUR_API_KEY_HERE
-```
-
-If `python-dotenv` is installed the app will automatically load `.env` at startup.
-
-3. Start the GUI:
-
-```powershell
 python main.py
 ```
 
-## Basic usage
+Running the app will open the Qt GUI. The main entry point is `main.py` and navigation is handled by `ui_nav.py`.
 
-- Click "Load Image" to select a local image.
-- Click "Run Workflow" to send the image to the configured workflow.
-- Toggle "Start Live" to stream webcam frames to the workflow (requires OpenCV or the streaming pipeline SDK).
-- JSON results appear in the bottom panel. If a visualization image (data URL or base64) is found in the response, it replaces the preview and can be saved via "Save Visualization".
+## Usage / UI Overview
 
-## Configuration notes
+- `Camera` page: start/stop live capture, run real-time inference, save snapshots.
+- `Farm` page: manage projects, metadata, and batch operations.
+- `Samples` page: review saved images, re-run inference, export results.
 
-- `api_url` defaults to `https://serverless.roboflow.com`.
-- `api_key` may be provided via the Settings dialog or via `ROBOFLOW_API_KEY` env var / `.env` file.
-- `workspace_name` and `workflow_id` are now editable in the Settings dialog (open the app and click the "Settings" button).
+UI files are located in `layouts/` and controllers are in `mpcamera/controllers/` (e.g. `camera_page.py`, `farm_page.py`, `samples_page.py`).
 
-## Dependencies and optional features
+Prediction debugging output can be found in `prediction_debug.txt` (root and `mpcamera/`).
 
-- Required for UI: `PyQt5` (installed from `requirements.txt`).
-- Optional / recommended for full functionality:
-  - `opencv-python` — required for webcam fallback when the streaming pipeline isn't available.
-  - `numpy` — used for image conversions returned by some streaming SDKs.
-  - `inference_sdk` (project-specific) — provides `InferenceHTTPClient` used to call the workflow.
-  - `inference` (optional streaming pipeline) — if available, `VideoWorker` will prefer the streaming pipeline for lower latency.
+## Models
 
-If any optional package is missing the app will start but certain features will be disabled and the UI will show helpful errors.
+Local model weights are stored in the `models/` folder. Examples:
 
-## Troubleshooting
+- `optimized-maskrcnn-resnet50.pth`
+- `PH-optimized-maskrcnn-resnet101.pth`
 
-- If the GUI fails to start with an ImportError for `PyQt5`, install it into your virtualenv. On Windows:
+To use a local model, set the appropriate model path in the app settings or update `utils/local_models_utils.py` / `utils/inference_utils.py` as needed. The app also includes support for Roboflow-hosted models via `services/roboflow.py`.
 
-```powershell
-pip install PyQt5
-```
+## Architecture (high level)
 
-- If live webcam streaming does not work, ensure OpenCV is installed and the webcam is available:
+GUI (PyQt6) -> Inference layer (PyTorch models + `utils/inference_utils.py`) -> Morphometrics utilities (`utils/morphometrics/*`) -> Services (`services/directus.py`, `services/roboflow.py`) for export and remote inference.
 
-```powershell
-pip install opencv-python
-```
+## Code Organization
 
-- If workflow calls fail, confirm `inference_sdk` is installed and the `api_url`/`api_key`/`workspace`/`workflow_id` are correct.
-
-# Roboflow / Inference GUI (PyQt5)
-
-This is a small PyQt5 GUI that uploads an image and runs a Roboflow `InferenceHTTPClient` workflow (serverless) and shows the JSON result and any visualization returned.
-
-Files added:
-
-- `main.py` — the PyQt5 GUI application
-- `requirements.txt` — Python dependencies
-
-Quick start
-
-1. Create a virtual environment and activate it (Windows PowerShell example):
-
-```powershell
-python -m venv .venv; .\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
-
-2. Provide your API key. You can either paste it into the API key field in the app, or set the environment variable `ROBOFLOW_API_KEY` before launching the app. Example (PowerShell):
-
-```powershell
-$env:ROBOFLOW_API_KEY = 'YOUR_API_KEY_HERE'
-```
-
-Alternatively, you can create a `.env` file in the project root (recommended for local dev). Copy `.env.example` to `.env` and fill in your real key:
-
-```
-ROBOFLOW_API_KEY=YOUR_API_KEY_HERE
-```
-
-The application will automatically load `.env` when `python-dotenv` is installed (it has been added to `requirements.txt`).
-
-3. Run the GUI:
-
-```powershell
-python main.py
-```
-
-How it works
-
-- Click "Load Image" and pick a local image file.
-- Click "Run Workflow" to send the image to the configured workflow.
-- The app runs the inference in a background thread and shows the pretty-printed JSON in the lower panel.
-- If a visualization image (data URL or base64) is found in the response, it will replace the preview and you can save it using "Save Visualization".
-
-Configuration
-
-- `api_url` defaults to `https://serverless.roboflow.com`.
-- `api_key` can be provided via the UI or `ROBOFLOW_API_KEY` env var.
-- `workspace_name` and `workflow_id` fields are pre-filled with the example values from your snippet; edit them if you need to target a different workflow.
-
-Notes and caveats
-
-- This project expects a Python package named `inference_sdk` which exposes `InferenceHTTPClient` (as in your snippet). Make sure that package is installed and available in your environment.
-- The app includes some heuristics to find base64-encoded visualization images in the response; if your workflow returns images under a specific key, the app should find it, but you can adapt the `find_base64_image` function to the exact response shape.
+- `main.py` — application entry point
+- `ui_nav.py` — navigation and startup logic
+- `mpcamera/` — package with controllers, UI helpers, and assets
+- `layouts/` — Qt Designer `.ui` files
+- `models/` — model weights and artifacts
+- `services/` — external integrations (Directus, Roboflow)
+- `utils/` — image processing, inference helpers, and morphometric calculators
