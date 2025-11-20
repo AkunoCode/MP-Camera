@@ -114,6 +114,8 @@ class CameraPageController(QtCore.QObject):
 
         # --- Init Sequence ---
         self.ui = self._find_ui_elements()
+        # Overlay visibility state (default ON)
+        self._overlays_visible = True
         self._replace_graphics_view()
         self._init_ui_defaults()
         self._setup_connections()
@@ -148,6 +150,8 @@ class CameraPageController(QtCore.QObject):
             "mag_spin": self.page.findChild(
                 QtWidgets.QDoubleSpinBox, "magnificationSpinbox"
             ),
+            "reload_btn": self.page.findChild(QtWidgets.QPushButton, "reloadButton"),
+            "view_btn": self.page.findChild(QtWidgets.QPushButton, "viewButton"),
             # sliders for brightness / contrast
             "brightness_slider": self.page.findChild(
                 QtWidgets.QSlider, "brightnessSlider"
@@ -192,6 +196,10 @@ class CameraPageController(QtCore.QObject):
         # Buttons
         if ui["cam_btn"] is not None:
             ui["cam_btn"].clicked.connect(self._toggle_camera)
+        if ui.get("reload_btn") is not None:
+            ui["reload_btn"].clicked.connect(self._on_reload_clicked)
+        if ui.get("view_btn") is not None:
+            ui["view_btn"].clicked.connect(self._on_view_toggled)
         if ui["cap_btn"] is not None:
             ui["cap_btn"].clicked.connect(self._toggle_capture)
         if ui["clear_btn"] is not None:
@@ -631,7 +639,26 @@ class CameraPageController(QtCore.QObject):
         self._vc = None
         self._streaming = False
         self._inference_running = False
+        # Clear the displayed scene and any inference overlays
         self._clear_scene()
+
+        # Clear inference table and reset stats so stopping camera removes results
+        try:
+            if self.ui.get("inf_table") is not None:
+                self.ui["inf_table"].setRowCount(0)
+        except Exception:
+            pass
+
+        try:
+            self._reset_stats_labels()
+        except Exception:
+            pass
+
+        # Ensure spinner/overlays hidden
+        try:
+            self._toggle_spinner(False)
+        except Exception:
+            pass
 
     def _on_frame_tick(self):
         """Capture frame, convert to QPixmap, display."""
@@ -732,6 +759,89 @@ class CameraPageController(QtCore.QObject):
     def _clear_scene(self):
         if self.ui["cam_view"] is not None:
             self.ui["cam_view"].setScene(QtWidgets.QGraphicsScene())
+
+    def _on_reload_clicked(self):
+        """Handler for reload button: re-run inference on the currently displayed/adjusted image."""
+        # Prevent concurrent inferences
+        if self._inference_running:
+            print("Inference already running; reload ignored.")
+            return
+
+        # Prefer the QPixmap if available
+        if self._last_pixmap is not None:
+            self._inference_running = True
+            self._run_inference_on_pixmap(self._last_pixmap, is_temp=True)
+            return
+
+        # Otherwise, if we have a current adjusted numpy image, save and run inference
+        if self._current_frame_np is not None:
+            try:
+                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
+                tmp.close()
+                cv2.imwrite(tmp.name, self._current_frame_np)
+                self._inference_running = True
+                self._run_inference(tmp.name, is_temp=True)
+                return
+            except Exception as e:
+                print(f"Reload inference failed to write temp image: {e}")
+
+        # Nothing to run on
+        QtWidgets.QMessageBox.information(self.page, "No Image", "No image available to re-run inference.")
+
+    def _on_view_toggled(self):
+        """Toggle polygon/overlay visibility and update the view button appearance."""
+        # Flip state
+        self._overlays_visible = not getattr(self, "_overlays_visible", True)
+
+        btn = self.ui.get("view_btn")
+        try:
+            if self._overlays_visible:
+                # On state: show symbol ☉ and normal styling
+                if btn is not None:
+                    btn.setText("☉")
+                    try:
+                        btn.setProperty("designClass", "")
+                        btn.style().unpolish(btn)
+                        btn.style().polish(btn)
+                    except Exception:
+                        pass
+            else:
+                # Off state: show dash — and lightButton style
+                if btn is not None:
+                    btn.setText("—")
+                    try:
+                        btn.setProperty("designClass", "lightButton")
+                        btn.style().unpolish(btn)
+                        btn.style().polish(btn)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        # Apply visibility to existing overlays in the scene(s)
+        try:
+            view = self.ui.get("cam_view")
+            if view is not None:
+                scene = view.scene()
+                if scene is not None:
+                    # If a grouped inference overlay exists, toggle the group's visibility
+                    grp = getattr(scene, "_inference_group", None)
+                    if grp is not None:
+                        try:
+                            grp.setVisible(self._overlays_visible)
+                            return
+                        except Exception:
+                            pass
+
+                    # Fallback: toggle items tagged as inference_overlay
+                    for it in scene.items():
+                        try:
+                            if it.data(0) == "inference_overlay":
+                                it.setVisible(self._overlays_visible)
+                        except Exception:
+                            pass
+        except Exception:
+            pass
 
     # ================= INFERENCE LOGIC =================
 
