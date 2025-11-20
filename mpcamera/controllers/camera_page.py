@@ -1,4 +1,4 @@
-from PyQt6 import QtWidgets, QtCore, QtGui
+﻿from PyQt6 import QtWidgets, QtCore, QtGui
 from threading import Thread
 import json
 import pathlib
@@ -46,6 +46,116 @@ from mpcamera.utils.morphometrics import (
     calculate_equivalent_circular_diameter,
     calculate_skeleton_length_um,
 )
+
+
+def _safe_call(func, *args, default=None, log_prefix="camera_page"):
+    """Call `func(*args)` and return result or `default` on exception.
+
+    Use this to centralize short-lived exception handling and logging so the
+    main code isn't littered with tiny try/except blocks.
+    """
+    try:
+        return func(*args)
+    except Exception as e:
+        try:
+            print(
+                f"{log_prefix}: safe call {getattr(func, '__name__', str(func))} failed: {e}"
+            )
+        except Exception:
+            pass
+        return default
+
+
+def _find_pixmap_item(scene):
+    """Return the first QGraphicsPixmapItem-like object from `scene` or None."""
+    if scene is None:
+        return None
+    for it in scene.items():
+        # prefer real QGraphicsPixmapItem but fall back to duck-typed objects
+        try:
+            from PyQt6 import QtWidgets as _qtw
+
+            if isinstance(it, _qtw.QGraphicsPixmapItem):
+                return it
+        except Exception:
+            pass
+        if hasattr(it, "pixmap"):
+            return it
+    return None
+
+
+def qimage_to_numpy(qimg: QtGui.QImage):
+    """Convert a QImage to a HxWx3 uint8 numpy array (RGB).
+
+    This mirrors the logic used in several places and centralizes format
+    normalization and padding handling.
+    """
+    if qimg is None:
+        return None
+    fmt = qimg.format()
+    if (
+        fmt != QtGui.QImage.Format.Format_RGB888
+        and fmt != QtGui.QImage.Format.Format_RGBA8888
+    ):
+        # try to convert to a known format
+        if qimg.convertToFormat(QtGui.QImage.Format.Format_RGB888).isNull():
+            try:
+                qimg = qimg.convertToFormat(QtGui.QImage.Format.Format_RGBA8888)
+            except Exception:
+                qimg = qimg.convertToFormat(QtGui.QImage.Format.Format_RGB888)
+        else:
+            qimg = qimg.convertToFormat(QtGui.QImage.Format.Format_RGB888)
+
+    w = qimg.width()
+    h = qimg.height()
+    channels = 3
+    fmt = qimg.format()
+    if fmt == QtGui.QImage.Format.Format_RGBA8888:
+        channels = 4
+
+    ptr = qimg.bits()
+    ptr.setsize(qimg.byteCount())
+    arr = np.frombuffer(ptr, dtype=np.uint8)
+    bpl = qimg.bytesPerLine()
+    if bpl == w * channels:
+        arr = arr.reshape((h, w, channels))
+    else:
+        arr = arr.reshape((h, bpl))
+        arr = arr[:, : w * channels]
+        arr = arr.reshape((h, w, channels))
+
+    if channels == 4:
+        arr = arr[:, :, :3]
+    return arr.copy()
+
+
+def get_image_numpy_from_scene_or_path(scene, path=None):
+    """Attempt to obtain an RGB numpy array from a QGraphicsScene pixmap or
+    by loading `path` with OpenCV as a fallback.
+    """
+    pix_item = _find_pixmap_item(scene)
+    if pix_item is not None:
+        try:
+            qimg = pix_item.pixmap().toImage()
+            arr = qimage_to_numpy(qimg)
+            if arr is not None:
+                return arr
+        except Exception:
+            pass
+
+    # fallback: read from path using cv2 (BGR -> RGB)
+    if path:
+        try:
+            bgr = cv2.imread(path)
+            if bgr is not None:
+                try:
+                    rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+                except Exception:
+                    rgb = bgr[:, :, ::-1]
+                return rgb
+        except Exception:
+            pass
+    return None
 
 
 # Directus and site helpers are provided by `camera_utils` service
@@ -655,139 +765,14 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
                                         )
                                         if inf_table is not None:
                                             # try to obtain the image numpy array from the scene's pixmap
-                                            img_np = None
-                                            try:
-
-                                                def _qimage_to_numpy(
-                                                    qimg: QtGui.QImage,
-                                                ):
-                                                    # convert to a known RGB or RGBA format
-                                                    fmt = qimg.format()
-                                                    # prefer RGB888 or RGBA8888
-                                                    if (
-                                                        fmt
-                                                        != QtGui.QImage.Format.Format_RGB888
-                                                        and fmt
-                                                        != QtGui.QImage.Format.Format_RGBA8888
-                                                    ):
-                                                        try:
-                                                            qimg = qimg.convertToFormat(
-                                                                QtGui.QImage.Format.Format_RGB888
-                                                            )
-                                                        except Exception:
-                                                            try:
-                                                                qimg = qimg.convertToFormat(
-                                                                    QtGui.QImage.Format.Format_RGBA8888
-                                                                )
-                                                            except Exception:
-                                                                pass
-
-                                                    w = qimg.width()
-                                                    h = qimg.height()
-                                                    channels = 3
-                                                    fmt = qimg.format()
-                                                    if (
-                                                        fmt
-                                                        == QtGui.QImage.Format.Format_RGBA8888
-                                                    ):
-                                                        channels = 4
-
-                                                    ptr = qimg.bits()
-                                                    ptr.setsize(qimg.byteCount())
-                                                    arr = np.frombuffer(
-                                                        ptr, dtype=np.uint8
-                                                    )
-                                                    # account for possible scanline padding
-                                                    bytes_per_line = qimg.bytesPerLine()
-                                                    if bytes_per_line == w * channels:
-                                                        arr = arr.reshape(
-                                                            (h, w, channels)
-                                                        )
-                                                    else:
-                                                        # reshape to (h, bytes_per_line) then slice
-                                                        arr = arr.reshape(
-                                                            (h, bytes_per_line)
-                                                        )
-                                                        arr = arr[:, : w * channels]
-                                                        arr = arr.reshape(
-                                                            (h, w, channels)
-                                                        )
-
-                                                    # if RGBA, drop alpha
-                                                    if channels == 4:
-                                                        arr = arr[:, :, :3]
-
-                                                    # QImage.Format_RGB888 is already RGB order
-                                                    return arr.copy()
-
-                                                pix_item = None
-                                                for it in scene.items():
-                                                    try:
-                                                        from PyQt6 import (
-                                                            QtWidgets as _qtw,
-                                                        )
-
-                                                        if isinstance(
-                                                            it, _qtw.QGraphicsPixmapItem
-                                                        ):
-                                                            pix_item = it
-                                                            break
-                                                    except Exception:
-                                                        if hasattr(it, "pixmap"):
-                                                            pix_item = it
-                                                            break
-                                                if pix_item is not None:
-                                                    qimg = pix_item.pixmap().toImage()
-                                                    try:
-                                                        img_np = _qimage_to_numpy(qimg)
-                                                    except Exception:
-                                                        img_np = None
-                                                # fallback: if QGraphicsPixmapItem not present, try loading from original path
-                                                if img_np is None:
-                                                    try:
-                                                        if path and os.path.exists(
-                                                            path
-                                                        ):
-                                                            # read with cv2 (BGR) then convert to RGB
-                                                            bgr = cv2.imread(path)
-                                                            if bgr is not None:
-                                                                try:
-                                                                    rgb = cv2.cvtColor(
-                                                                        bgr,
-                                                                        cv2.COLOR_BGR2RGB,
-                                                                    )
-                                                                except Exception:
-                                                                    rgb = bgr[
-                                                                        :, :, ::-1
-                                                                    ]
-                                                                img_np = rgb
-                                                                # debug write
-                                                                try:
-                                                                    dbg_path = (
-                                                                        pathlib.Path(
-                                                                            __file__
-                                                                        )
-                                                                        .resolve()
-                                                                        .parents[1]
-                                                                        / "prediction_debug.txt"
-                                                                    )
-                                                                    with open(
-                                                                        dbg_path,
-                                                                        "a",
-                                                                        encoding="utf-8",
-                                                                    ) as _dbg:
-                                                                        _dbg.write(
-                                                                            f"COLOR_DEBUG: loaded_image_from_path: {path}\n"
-                                                                        )
-                                                                        _dbg.write(
-                                                                            f"loaded_image_shape: {img_np.shape if img_np is not None else None}\n"
-                                                                        )
-                                                                except Exception:
-                                                                    pass
-                                                    except Exception:
-                                                        pass
-                                            except Exception:
-                                                img_np = None
+                                            img_np = get_image_numpy_from_scene_or_path(
+                                                (
+                                                    cam_view.scene()
+                                                    if cam_view is not None
+                                                    else None
+                                                ),
+                                                path,
+                                            )
                                             # collect overlay mapping (index -> raw_key) from scene so we can assign stable keys
                                             overlay_index_map = {}
                                             try:
@@ -1942,30 +1927,89 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
                                     tb = traceback.format_exc()
                                     results.append((False, tb))
 
-                            # notify on main thread
+                            # notify on main thread; prefer a robust scheduling that
+                            # doesn't silently swallow errors so we can see failures
                             try:
                                 success_count = sum(1 for s, _ in results if s)
 
                                 def _show_result():
                                     try:
-                                        if success_count > 0:
-                                            QtWidgets.QMessageBox.information(
-                                                camera_page,
-                                                "Saved",
-                                                f"Successfully saved {success_count} records to Directus.",
+                                        parent = None
+                                        try:
+                                            if (
+                                                camera_page is not None
+                                                and getattr(
+                                                    camera_page,
+                                                    "isVisible",
+                                                    lambda: False,
+                                                )()
+                                            ):
+                                                parent = camera_page
+                                            else:
+                                                try:
+                                                    parent = (
+                                                        QtWidgets.QApplication.activeWindow()
+                                                    )
+                                                except Exception:
+                                                    parent = None
+                                        except Exception:
+                                            parent = None
+
+                                        title = (
+                                            "Saved" if success_count > 0 else "Failed"
+                                        )
+                                        text = (
+                                            f"Successfully saved {success_count} records to Directus."
+                                            if success_count > 0
+                                            else "Failed to save records to Directus. See console for details."
+                                        )
+                                        # show information/critical depending on result
+                                        try:
+                                            if success_count > 0:
+                                                QtWidgets.QMessageBox.information(
+                                                    parent, title, text
+                                                )
+                                            else:
+                                                QtWidgets.QMessageBox.critical(
+                                                    parent, title, text
+                                                )
+                                        except Exception as e:
+                                            # If showing with parent failed, try without parent
+                                            try:
+                                                if success_count > 0:
+                                                    QtWidgets.QMessageBox.information(
+                                                        None, title, text
+                                                    )
+                                                else:
+                                                    QtWidgets.QMessageBox.critical(
+                                                        None, title, text
+                                                    )
+                                            except Exception:
+                                                # log so we can diagnose why messagebox didn't appear
+                                                try:
+                                                    print(
+                                                        "camera_page: failed to show result messagebox:",
+                                                        e,
+                                                    )
+                                                except Exception:
+                                                    pass
+                                    except Exception as e:
+                                        try:
+                                            print(
+                                                "camera_page: _show_result failed:", e
                                             )
-                                        else:
-                                            QtWidgets.QMessageBox.critical(
-                                                camera_page,
-                                                "Failed",
-                                                "Failed to save records to Directus. See console for details.",
-                                            )
-                                    except Exception:
-                                        pass
+                                        except Exception:
+                                            pass
 
                                 QtCore.QTimer.singleShot(0, _show_result)
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                try:
+                                    print(
+                                        "camera_page: scheduling result notification failed:",
+                                        e,
+                                    )
+                                except Exception:
+                                    pass
 
                         try:
                             Thread(target=_worker, args=(to_push,), daemon=True).start()
