@@ -27,6 +27,7 @@ from mpcamera.utils.prediction_utils import extract_points_from_prediction
 from mpcamera.ui.overlays import ensure_overlay_for_view, render_predictions_on_scene
 from mpcamera.utils.inference_utils import parse_result_to_preds, compute_aggregates
 from mpcamera.utils.um_per_pixel import calculate_micrometers_per_pixel
+from mpcamera.utils.color_utils import get_color_name  # <--- Added Import
 from mpcamera.utils.morphometrics import (
     calculate_area_um2,
     calculate_perimeter_um,
@@ -56,6 +57,10 @@ class CameraPageController(QtCore.QObject):
     # Constants
     FRAME_INTERVAL_MS = 33  # ~30 FPS
     INFERENCE_INTERVAL_MS = 1000
+
+    # Confidence Threshold (Detection Sensitivity)
+    CONFIDENCE_THRESHOLD = 0.40
+
     DEFAULT_MODEL = ("YOLOv11 (Cloud)", "detect-count-and-visualize-2")
     ALT_MODEL = ("RF-DETR-SEG (Cloud)", "detect-count-and-visualize")
 
@@ -64,11 +69,11 @@ class CameraPageController(QtCore.QObject):
     LOCAL_NUM_CLASSES = 6
     CLASS_MAP = {
         0: "Background",
-        1: "Fiber",
-        2: "Foam",
-        3: "Fragment",
+        1: "Fragment",
+        2: "Pellet",
+        3: "Fiber",
         4: "Sheet",
-        5: "Film",
+        5: "Foam",
     }
 
     def __init__(
@@ -84,6 +89,9 @@ class CameraPageController(QtCore.QObject):
         self._paused = False
         self._inference_running = False
         self._last_pixmap: Optional[QtGui.QPixmap] = None
+        self._current_frame_np: Optional[np.ndarray] = (
+            None  # <--- New: Store raw image for color analysis
+        )
         self._cached_soils: List[Dict] = []
 
         # Local Inference State
@@ -479,6 +487,9 @@ class CameraPageController(QtCore.QObject):
         ret, frame = self._vc.read()
         if ret:
             try:
+                # Store BGR frame for color extraction
+                self._current_frame_np = frame
+
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 h, w, ch = frame_rgb.shape
                 qimg = QtGui.QImage(
@@ -505,6 +516,9 @@ class CameraPageController(QtCore.QObject):
         if fname:
             self._stop_camera()
             self._update_ui_state()
+
+            # Load raw image for color analysis
+            self._current_frame_np = cv2.imread(fname)
 
             pix = QtGui.QPixmap(fname)
             if not pix.isNull():
@@ -548,6 +562,7 @@ class CameraPageController(QtCore.QObject):
             self.ui["inf_table"].setRowCount(0)
         self._reset_stats_labels()
         self._last_pixmap = None
+        self._current_frame_np = None
         self._update_ui_state()
 
     def _clear_scene(self):
@@ -613,7 +628,9 @@ class CameraPageController(QtCore.QObject):
 
                     # Run Prediction
                     json_str = self._local_engine.predict_json(
-                        path, confidence_threshold=0.5, class_map=self.CLASS_MAP
+                        path,
+                        confidence_threshold=self.CONFIDENCE_THRESHOLD,
+                        class_map=self.CLASS_MAP,
                     )
 
                     # Convert JSON string back to object for consistency with existing UI logic
@@ -623,7 +640,14 @@ class CameraPageController(QtCore.QObject):
                 elif RoboflowClient:
                     # --- CLOUD INFERENCE ---
                     client = RoboflowClient.get_default()
-                    result = client.run_workflow(path)
+
+                    # Use the custom confidence threshold
+                    try:
+                        result = client.run_workflow(
+                            path, confidence=self.CONFIDENCE_THRESHOLD
+                        )
+                    except TypeError:
+                        result = client.run_workflow(path)
 
             except Exception as e:
                 print(f"Inference Error: {e}")
@@ -758,6 +782,9 @@ class CameraPageController(QtCore.QObject):
             else (0, 0)
         )
 
+        # Ensure we have the raw image for color analysis
+        current_img = self._current_frame_np
+
         for p in preds:
             row = table.rowCount()
             table.insertRow(row)
@@ -773,7 +800,21 @@ class CameraPageController(QtCore.QObject):
 
             set_cell(0, p.get("label", ""), key)
             set_cell(1, f"{p.get('score', 0):.2f}")
-            set_cell(2, "")
+
+            # --- COLOR EXTRACTION ---
+            color_name = ""
+            if current_img is not None:
+                # Get points list, handled by get_color_name
+                pts = p.get("points") or extract_points_from_prediction(
+                    p.get("raw") or {}
+                )
+                if pts:
+                    try:
+                        color_name = get_color_name(current_img, pts)
+                    except Exception:
+                        pass
+
+            set_cell(2, color_name)
 
             metrics = [
                 (3, "area", "μm²"),
@@ -783,8 +824,8 @@ class CameraPageController(QtCore.QObject):
                 (7, "deq", "μm"),
                 (8, "skeleton", "μm"),
             ]
-            for col, key, unit in metrics:
-                val = stats.get(key)
+            for col, key_metric, unit in metrics:
+                val = stats.get(key_metric)
                 if val is not None:
                     set_cell(col, f"{val:.2f} {unit}", val)
 
@@ -876,6 +917,7 @@ class CameraPageController(QtCore.QObject):
                 "sample_source": soil_id,
                 "shape": table.item(r, 0).text(),
                 "confidence_level": float(table.item(r, 1).text() or 0),
+                "color": table.item(r, 2).text(),  # <--- Added Color
                 "area_um2": get_val(3),
                 "perimeter_um": get_val(4),
                 "major_axis_um": get_val(5),
