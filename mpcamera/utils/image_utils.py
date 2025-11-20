@@ -2,7 +2,9 @@ import cv2
 import numpy as np
 
 
-def adjust_brightness_contrast(img: np.ndarray, brightness_pct: int = 50, contrast_pct: int = 50) -> np.ndarray:
+def adjust_brightness_contrast(
+    img: np.ndarray, brightness_pct: int = 50, contrast_pct: int = 50
+) -> np.ndarray:
     """
     Adjust brightness and contrast of an image.
 

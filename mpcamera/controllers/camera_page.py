@@ -149,7 +149,9 @@ class CameraPageController(QtCore.QObject):
                 QtWidgets.QDoubleSpinBox, "magnificationSpinbox"
             ),
             # sliders for brightness / contrast
-            "brightness_slider": self.page.findChild(QtWidgets.QSlider, "brightnessSlider"),
+            "brightness_slider": self.page.findChild(
+                QtWidgets.QSlider, "brightnessSlider"
+            ),
             "contrast_slider": self.page.findChild(QtWidgets.QSlider, "contrastSlider"),
             # Sliders
             "conf_slider": self.page.findChild(QtWidgets.QSlider, "confidenceSlider"),
@@ -211,11 +213,15 @@ class CameraPageController(QtCore.QObject):
         if ui.get("brightness_slider") is not None:
             ui["brightness_slider"].setRange(0, 100)
             ui["brightness_slider"].setValue(50)
-            ui["brightness_slider"].valueChanged.connect(self._on_brightness_contrast_changed)
+            ui["brightness_slider"].valueChanged.connect(
+                self._on_brightness_contrast_changed
+            )
         if ui.get("contrast_slider") is not None:
             ui["contrast_slider"].setRange(0, 100)
             ui["contrast_slider"].setValue(50)
-            ui["contrast_slider"].valueChanged.connect(self._on_brightness_contrast_changed)
+            ui["contrast_slider"].valueChanged.connect(
+                self._on_brightness_contrast_changed
+            )
 
         # Worker signals
         self.inference_finished_signal.connect(self._on_inference_finished)
@@ -526,11 +532,21 @@ class CameraPageController(QtCore.QObject):
             return
 
         # Read slider values (0-100)
-        b_val = self.ui.get("brightness_slider").value() if self.ui.get("brightness_slider") is not None else 50
-        c_val = self.ui.get("contrast_slider").value() if self.ui.get("contrast_slider") is not None else 50
+        b_val = (
+            self.ui.get("brightness_slider").value()
+            if self.ui.get("brightness_slider") is not None
+            else 50
+        )
+        c_val = (
+            self.ui.get("contrast_slider").value()
+            if self.ui.get("contrast_slider") is not None
+            else 50
+        )
 
         try:
-            adjusted = adjust_brightness_contrast(raw, brightness_pct=b_val, contrast_pct=c_val)
+            adjusted = adjust_brightness_contrast(
+                raw, brightness_pct=b_val, contrast_pct=c_val
+            )
         except Exception:
             adjusted = raw
 
@@ -541,7 +557,9 @@ class CameraPageController(QtCore.QObject):
         try:
             frame_rgb = cv2.cvtColor(adjusted, cv2.COLOR_BGR2RGB)
             h, w, ch = frame_rgb.shape
-            qimg = QtGui.QImage(frame_rgb.data, w, h, ch * w, QtGui.QImage.Format.Format_RGB888)
+            qimg = QtGui.QImage(
+                frame_rgb.data, w, h, ch * w, QtGui.QImage.Format.Format_RGB888
+            )
             self._last_pixmap = QtGui.QPixmap.fromImage(qimg.copy())
             self._display_pixmap(self._last_pixmap)
         except Exception:
