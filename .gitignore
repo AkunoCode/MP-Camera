@@ -1,5 +1,6 @@
 # Virtual environment
 .venv/
+.venv311/
 
 # Byte-compiled / cache
 __pycache__/
@@ -10,3 +11,8 @@ __pycache__/
 
 # OS files
 .DS_Store
+
+# Models - because they can be large and are often regenerated
+models/
+
+prediction_debug.txt
