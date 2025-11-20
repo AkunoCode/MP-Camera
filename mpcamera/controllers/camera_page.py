@@ -1,6 +1,7 @@
 ﻿import cv2
 import json
 import os
+import glob
 import tempfile
 import traceback
 import threading
@@ -35,6 +36,12 @@ from mpcamera.utils.morphometrics import (
     calculate_skeleton_length_um,
 )
 
+# Import the local inference class
+try:
+    from mpcamera.utils.local_models_utils import LocalModelInference
+except ImportError:
+    LocalModelInference = None
+
 
 class CameraPageController(QtCore.QObject):
     """
@@ -49,8 +56,20 @@ class CameraPageController(QtCore.QObject):
     # Constants
     FRAME_INTERVAL_MS = 33  # ~30 FPS
     INFERENCE_INTERVAL_MS = 1000
-    DEFAULT_MODEL = ("YOLOv11", "detect-count-and-visualize-2")
-    ALT_MODEL = ("RF-DETR-SEG", "detect-count-and-visualize")
+    DEFAULT_MODEL = ("YOLOv11 (Cloud)", "detect-count-and-visualize-2")
+    ALT_MODEL = ("RF-DETR-SEG (Cloud)", "detect-count-and-visualize")
+
+    # Local Model Configuration
+    LOCAL_MODELS_DIR = os.path.join(os.getcwd(), "mpcamera", "models")
+    LOCAL_NUM_CLASSES = 6
+    CLASS_MAP = {
+        0: "Background",
+        1: "Fragment",
+        2: "Pellet",
+        3: "Fiber",
+        4: "Sheet",
+        5: "Foam",
+    }
 
     def __init__(
         self, camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow
@@ -66,6 +85,10 @@ class CameraPageController(QtCore.QObject):
         self._inference_running = False
         self._last_pixmap: Optional[QtGui.QPixmap] = None
         self._cached_soils: List[Dict] = []
+
+        # Local Inference State
+        self._local_engine = None
+        self._current_local_model_path = None
 
         # --- Timers ---
         self._frame_timer = QtCore.QTimer()
@@ -179,8 +202,13 @@ class CameraPageController(QtCore.QObject):
         if combo is not None:
             combo.blockSignals(True)
             combo.clear()
+
+            # 1. Add Cloud Models
             combo.addItem(*self.DEFAULT_MODEL)
             combo.addItem(*self.ALT_MODEL)
+
+            # 2. Add Local Models
+            self._populate_local_models(combo)
 
             # Sync with current Roboflow default if available
             if RoboflowClient:
@@ -191,6 +219,25 @@ class CameraPageController(QtCore.QObject):
                 except Exception:
                     combo.setCurrentIndex(0)
             combo.blockSignals(False)
+
+    def _populate_local_models(self, combo: QtWidgets.QComboBox):
+        """Scans the models directory and adds .pth files to the combobox."""
+        if not os.path.exists(self.LOCAL_MODELS_DIR):
+            print(f"[CAMERA PAGE] Models directory not found: {self.LOCAL_MODELS_DIR}")
+            return
+
+        pth_files = glob.glob(os.path.join(self.LOCAL_MODELS_DIR, "*.pth"))
+        if not pth_files:
+            print(f"[CAMERA PAGE] No .pth files found in {self.LOCAL_MODELS_DIR}")
+            return
+
+        print(f"[CAMERA PAGE] Found {len(pth_files)} local models.")
+        combo.insertSeparator(combo.count())
+
+        for pth in pth_files:
+            filename = os.path.basename(pth)
+            # Display name matches filename, Data is the full path
+            combo.addItem(f"Local: {filename}", pth)
 
     def _replace_graphics_view(self):
         """Swap standard QGraphicsView with ZoomableGraphicsView at runtime."""
@@ -231,7 +278,7 @@ class CameraPageController(QtCore.QObject):
         except Exception as e:
             print(f"View replacement failed: {e}")
 
-    # ================= DATA LOADING (Restored Robust Logic) =================
+    # ================= DATA LOADING =================
 
     def _populate_data(self):
         """
@@ -260,8 +307,6 @@ class CameraPageController(QtCore.QObject):
             print(
                 f"[CAMERA PAGE] fetched soils count={len(soils) if soils is not None else 0}"
             )
-            if sites:
-                print(f"[CAMERA PAGE] sites sample={sites[:3]}")
 
             # 4. Update Cache & Backwards Compat
             self._cached_soils = soils or []
@@ -286,10 +331,6 @@ class CameraPageController(QtCore.QObject):
     def _update_farm_combo(self, sites: List[Dict]):
         combo = self.ui["farm_combo"]
 
-        print(
-            f"[CAMERA PAGE] update_farm_combo: combo_present={combo is not None} items_before={combo.count() if combo is not None else 'N/A'}"
-        )
-
         if combo is None:
             return
 
@@ -304,16 +345,11 @@ class CameraPageController(QtCore.QObject):
             try:
                 name = item.get("site_name") or item.get("name") or str(item.get("id"))
                 combo.addItem(str(name), item.get("id"))
-                print(
-                    f"[CAMERA PAGE] added farm item idx={idx} id={item.get('id')} name={name}"
-                )
             except Exception as e:
                 print(f"[CAMERA PAGE] failed to add farm item idx={idx} error={e}")
 
         combo.setCurrentIndex(-1)
         combo.blockSignals(False)
-
-        print(f"[CAMERA PAGE] farm_combo items_after={combo.count()}")
 
     def _filter_soil_combo(self, site_id):
         combo = self.ui["soil_combo"]
@@ -335,12 +371,10 @@ class CameraPageController(QtCore.QObject):
                     label = f"Sample ID {sid} ({date})"
                     combo.addItem(label, sid)
                     count += 1
-                    print(f"[CAMERA PAGE] added soil item id={sid} site={s_site}")
                 except Exception as e:
                     print(f"[CAMERA PAGE] failed to add soil item error={e}")
 
         combo.blockSignals(False)
-        print(f"[CAMERA PAGE] soil_combo items_after={count} (Filter: {site_id})")
 
     # ================= EVENT HANDLERS =================
 
@@ -370,23 +404,34 @@ class CameraPageController(QtCore.QObject):
                     self.ui["farm_combo"].blockSignals(False)
 
     def _on_model_changed(self):
-        """Update global Roboflow config and re-run inference if image loaded."""
+        """Update config or local state when model changes."""
         if self.ui["model_combo"] is None:
             return
 
         idx = self.ui["model_combo"].currentIndex()
-        wf = self.ui["model_combo"].itemData(idx)
+        data = self.ui["model_combo"].itemData(idx)
 
-        if RoboflowClient and wf:
+        # Check if it is a local file path
+        if isinstance(data, str) and data.endswith(".pth"):
+            print(f"[CAMERA PAGE] Selected local model: {data}")
+            # If we switch models, we might want to reset the engine so it reloads
+            if self._current_local_model_path != data:
+                self._local_engine = None
+                self._current_local_model_path = data
+        elif RoboflowClient and data:
+            # It's a Roboflow ID
             try:
-                RoboflowClient.get_default().workflow = wf
-                print(f"Roboflow workflow set to {wf}")
+                RoboflowClient.get_default().workflow = data
+                print(f"[CAMERA PAGE] Roboflow workflow set to {data}")
+                # Reset local state
+                self._current_local_model_path = None
+                self._local_engine = None
             except Exception:
                 pass
 
         # Re-run inference if static image exists
         if self._last_pixmap is not None:
-            print(f"[CAMERA PAGErunning inference due to model change")
+            print(f"[CAMERA PAGE] re-running inference due to model change")
             self._run_inference_on_pixmap(self._last_pixmap, is_temp=True)
 
     # ================= CAMERA LOGIC =================
@@ -533,19 +578,56 @@ class CameraPageController(QtCore.QObject):
                 self._inference_running = False
 
     def _run_inference(self, path: str, is_temp: bool = False):
-        """Spawns background thread for Roboflow."""
+        """Spawns background thread for Inference (Roboflow OR Local)."""
         # Show spinner if static image
         if not self._streaming:
             self._toggle_spinner(True)
 
+        # Check if current model is local (set in _on_model_changed)
+        is_local = (
+            self._current_local_model_path is not None
+            and self._current_local_model_path.endswith(".pth")
+        )
+
+        local_model_path = self._current_local_model_path
+
         def worker():
             result = None
             try:
-                if RoboflowClient:
+                if is_local:
+                    # --- LOCAL INFERENCE ---
+                    if LocalModelInference is None:
+                        print("LocalModelInference class not available.")
+                        return
+
+                    # Lazy Load Engine if not loaded or path changed
+                    if (
+                        self._local_engine is None
+                        or self._local_engine.model_path != local_model_path
+                    ):
+                        print(f"[WORKER] Loading Local Model: {local_model_path}")
+                        self._local_engine = LocalModelInference(
+                            model_path=local_model_path,
+                            num_classes=self.LOCAL_NUM_CLASSES,
+                        )
+
+                    # Run Prediction
+                    json_str = self._local_engine.predict_json(
+                        path, confidence_threshold=0.5, class_map=self.CLASS_MAP
+                    )
+
+                    # Convert JSON string back to object for consistency with existing UI logic
+                    # Existing logic expects: result = [...] or dict
+                    result = json.loads(json_str)
+
+                elif RoboflowClient:
+                    # --- CLOUD INFERENCE ---
                     client = RoboflowClient.get_default()
                     result = client.run_workflow(path)
+
             except Exception as e:
                 print(f"Inference Error: {e}")
+                traceback.print_exc()
             finally:
                 self.inference_finished_signal.emit(result, path if is_temp else "")
 
@@ -571,6 +653,7 @@ class CameraPageController(QtCore.QObject):
             scene = self.ui["cam_view"].scene()
             if scene:
                 try:
+                    # render_predictions_on_scene expects the raw result structure
                     render_predictions_on_scene(scene, result)
                 except Exception as e:
                     print(f"Overlay render failed: {e}")
