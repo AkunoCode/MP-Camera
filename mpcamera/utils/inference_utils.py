@@ -132,11 +132,23 @@ def compute_aggregates(preds: List[Dict[str, Any]]) -> Dict[str, Any]:
     total = len(preds)
     confidences = [p.get("score") for p in preds if p.get("score") is not None]
     ave_conf = None
+    min_conf = None
+    max_conf = None
     try:
         if confidences:
             ave_conf = sum(confidences) / len(confidences)
+            try:
+                min_conf = min(confidences)
+            except Exception:
+                min_conf = None
+            try:
+                max_conf = max(confidences)
+            except Exception:
+                max_conf = None
     except Exception:
         ave_conf = None
+        min_conf = None
+        max_conf = None
 
     counts = {k: 0 for k in _CLASS_KEYS}
     try:
@@ -158,4 +170,10 @@ def compute_aggregates(preds: List[Dict[str, Any]]) -> Dict[str, Any]:
     except Exception:
         pass
 
-    return {"total": total, "ave_confidence": ave_conf, "counts": counts}
+    return {
+        "total": total,
+        "ave_confidence": ave_conf,
+        "min_confidence": min_conf,
+        "max_confidence": max_conf,
+        "counts": counts,
+    }

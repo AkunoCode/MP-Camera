@@ -696,9 +696,29 @@ class CameraPageController(QtCore.QObject):
             if img is None:
                 return
 
+            # Reset brightness/contrast sliders to defaults for new image
+            try:
+                b_slider = self.ui.get("brightness_slider")
+                c_slider = self.ui.get("contrast_slider")
+                # Use middle of range (50) as default — keep signals blocked to avoid duplicate refresh
+                if b_slider is not None:
+                    b_slider.blockSignals(True)
+                    b_slider.setValue(50)
+                    b_slider.blockSignals(False)
+                if c_slider is not None:
+                    c_slider.blockSignals(True)
+                    c_slider.setValue(50)
+                    c_slider.blockSignals(False)
+            except Exception:
+                pass
+
             # Store raw and apply adjustments
             self._raw_frame_np = img.copy()
-            self._apply_adjustments_and_refresh()
+            # Apply adjustments once after resetting sliders
+            try:
+                self._apply_adjustments_and_refresh()
+            except Exception:
+                pass
 
             # Ensure UI buttons reflect that an image is now loaded
             self._update_ui_state()
@@ -1130,9 +1150,21 @@ class CameraPageController(QtCore.QObject):
             if self.ui["lbl_total"] is not None:
                 self.ui["lbl_total"].setText(str(ag.get("total", 0)))
 
-            ave = ag.get("ave_confidence", 0)
-            if self.ui["lbl_conf"] is not None:
-                self.ui["lbl_conf"].setText(f"{ave:.2f}")
+            min_c = ag.get("min_confidence")
+            max_c = ag.get("max_confidence")
+            # Display confidence range only (min-max). Fallback to single value or blank.
+            try:
+                if self.ui["lbl_conf"] is not None:
+                    if min_c is not None and max_c is not None:
+                        self.ui["lbl_conf"].setText(f"{min_c:.2f}-{max_c:.2f}")
+                    elif min_c is not None:
+                        self.ui["lbl_conf"].setText(f"{min_c:.2f}")
+                    elif max_c is not None:
+                        self.ui["lbl_conf"].setText(f"{max_c:.2f}")
+                    else:
+                        self.ui["lbl_conf"].setText("")
+            except Exception:
+                pass
 
             cnts = ag.get("counts", {})
             mapping = {
