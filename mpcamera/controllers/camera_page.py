@@ -335,6 +335,7 @@ class CameraPageController(QtCore.QObject):
         if not os.path.exists(self.LOCAL_MODELS_DIR):
             print(f"[CAMERA PAGE] Models directory not found: {self.LOCAL_MODELS_DIR}")
             return
+
     def _replace_graphics_view(self):
         """Swap standard QGraphicsView with ZoomableGraphicsView at runtime."""
         old_view = self.ui["cam_view"]
@@ -1157,6 +1158,7 @@ class CameraPageController(QtCore.QObject):
                 if raw_data is not None:
                     it.setData(QtCore.Qt.ItemDataRole.UserRole, raw_data)
                 table.setItem(row, col, it)
+
             # construct stable raw_key matching overlays: use detection_id/id or sorted JSON
             try:
                 key = p.get("detection_id") or p.get("id")
@@ -1441,26 +1443,72 @@ class CameraPageController(QtCore.QObject):
                     except Exception:
                         pass
 
-                # Avoid adding duplicate 'Show All' actions if toolbar already contains one
-                add_act = True
+                # Try to locate an existing toolbar or action to avoid duplicates
+                # 1) Find by objectName
                 try:
-                    for act in tb.actions():
-                        try:
-                            if act.text() == "Show All":
-                                add_act = False
-                                break
-                        except Exception:
-                            continue
+                    tb_existing = win.findChild(QtWidgets.QToolBar, "inferenceToolbar")
                 except Exception:
-                    add_act = True
+                    tb_existing = None
 
-                if add_act:
-                    show_all_act = QtGui.QAction("Show All", win)
-                    show_all_act.setStatusTip(
-                        "Show all inference overlays and clear selection"
-                    )
-                    show_all_act.triggered.connect(self._show_all_overlays)
-                    tb.addAction(show_all_act)
+                tb_found = tb_existing
+                # 2) If not found, search all toolbars for an existing 'Show All' action
+                if tb_found is None:
+                    try:
+                        for t in win.findChildren(QtWidgets.QToolBar):
+                            for act in t.actions():
+                                try:
+                                    if act.text() in ("Show All", "Save as CSV"):
+                                        tb_found = t
+                                        break
+                                except Exception:
+                                    continue
+                            if tb_found is not None:
+                                break
+                    except Exception:
+                        tb_found = None
+
+                # 3) If still not found, create toolbar and name it
+                if tb_found is None:
+                    tb = win.addToolBar("inferenceToolbar")
+                    try:
+                        tb.setObjectName("inferenceToolbar")
+                    except Exception:
+                        pass
+                else:
+                    tb = tb_found
+
+                # Helper to add an action if text not already present
+                def add_unique_action(toolbar, text, callback, status_tip=""):
+                    try:
+                        for act in toolbar.actions():
+                            try:
+                                if act.text() == text:
+                                    return
+                            except Exception:
+                                continue
+                        act = QtGui.QAction(text, win)
+                        if status_tip:
+                            act.setStatusTip(status_tip)
+                        act.triggered.connect(callback)
+                        toolbar.addAction(act)
+                    except Exception:
+                        pass
+
+                # Add Show All (unique)
+                add_unique_action(
+                    tb,
+                    "Show All",
+                    self._show_all_overlays,
+                    "Show all inference overlays and clear selection",
+                )
+
+                # Add Save as CSV (unique)
+                add_unique_action(
+                    tb,
+                    "Save as CSV",
+                    self._save_large_table_csv,
+                    "Save the inference table as CSV",
+                )
             except Exception:
                 pass
         except Exception as e:
@@ -1517,6 +1565,46 @@ class CameraPageController(QtCore.QObject):
                 tbl.selectionModel().clearSelection()
         except Exception:
             pass
+
+    def _save_large_table_csv(self):
+        """Save the large table contents to a CSV file chosen by the user."""
+        if self._large_table_window is None:
+            return
+        tbl = getattr(self._large_table_window, "_table", None)
+        if tbl is None:
+            return
+
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self.page, "Save CSV", "", "CSV Files (*.csv)"
+        )
+        if not path:
+            return
+
+        try:
+            with open(path, "w", newline="", encoding="utf-8") as fh:
+                writer = csv.writer(fh)
+                # write headers
+                headers = []
+                for c in range(tbl.columnCount()):
+                    hdr_item = tbl.horizontalHeaderItem(c)
+                    headers.append(hdr_item.text() if hdr_item is not None else "")
+                writer.writerow(headers)
+
+                # write rows
+                for r in range(tbl.rowCount()):
+                    row = []
+                    for c in range(tbl.columnCount()):
+                        it = tbl.item(r, c)
+                        row.append(it.text() if it is not None else "")
+                    writer.writerow(row)
+
+            QtWidgets.QMessageBox.information(
+                self.page, "Saved", f"Saved {tbl.rowCount()} rows to {path}"
+            )
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(
+                self.page, "Error", f"Failed to save CSV: {e}"
+            )
 
         # Show all overlays in the main scene
         try:
