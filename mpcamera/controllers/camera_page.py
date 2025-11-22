@@ -1,5 +1,6 @@
 ﻿import cv2
 import json
+import csv
 import os
 import glob
 import tempfile
@@ -102,6 +103,10 @@ class CameraPageController(QtCore.QObject):
         # Local Inference State
         self._local_engine = None
         self._current_local_model_path = None
+        # Large inference window (separate view for full table)
+        self._large_table_window: Optional[QtWidgets.QMainWindow] = None
+        # Last parsed predictions (for viewDetails button)
+        self._last_preds: List[Dict[str, Any]] = []
 
         # --- Timers ---
         self._frame_timer = QtCore.QTimer()
@@ -152,6 +157,10 @@ class CameraPageController(QtCore.QObject):
             ),
             "reload_btn": self.page.findChild(QtWidgets.QPushButton, "reloadButton"),
             "view_btn": self.page.findChild(QtWidgets.QPushButton, "viewButton"),
+            # viewDetails button (replaces the inline inference table in some UI versions)
+            "view_details_btn": self.page.findChild(
+                QtWidgets.QPushButton, "viewDetails"
+            ),
             # sliders for brightness / contrast
             "brightness_slider": self.page.findChild(
                 QtWidgets.QSlider, "brightnessSlider"
@@ -175,6 +184,24 @@ class CameraPageController(QtCore.QObject):
         }
 
         # Debug logs for missing elements (Critical for troubleshooting UI load issues)
+        missing = [k for k, v in elements.items() if v is None]
+        # If a dedicated viewDetails button wasn't found by objectName, try a best-effort search
+        if elements.get("view_details_btn") is None:
+            try:
+                for btn in self.page.findChildren(QtWidgets.QPushButton):
+                    try:
+                        obj = (btn.objectName() or "").lower()
+                        txt = (btn.text() or "").lower()
+                        if ("view" in obj and "detail" in obj) or (
+                            "view" in txt and "detail" in txt
+                        ):
+                            elements["view_details_btn"] = btn
+                            break
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+
         missing = [k for k, v in elements.items() if v is None]
         if missing:
             print(f"[CAMERA PAGE] Warning: UI elements not found: {missing}")
@@ -200,6 +227,9 @@ class CameraPageController(QtCore.QObject):
             ui["reload_btn"].clicked.connect(self._on_reload_clicked)
         if ui.get("view_btn") is not None:
             ui["view_btn"].clicked.connect(self._on_view_toggled)
+        # If a dedicated 'view details' button exists, open the large table on click
+        if ui.get("view_details_btn") is not None:
+            ui["view_details_btn"].clicked.connect(self._on_view_details_clicked)
         if ui["cap_btn"] is not None:
             ui["cap_btn"].clicked.connect(self._toggle_capture)
         if ui["clear_btn"] is not None:
@@ -305,20 +335,6 @@ class CameraPageController(QtCore.QObject):
         if not os.path.exists(self.LOCAL_MODELS_DIR):
             print(f"[CAMERA PAGE] Models directory not found: {self.LOCAL_MODELS_DIR}")
             return
-
-        pth_files = glob.glob(os.path.join(self.LOCAL_MODELS_DIR, "*.pth"))
-        if not pth_files:
-            print(f"[CAMERA PAGE] No .pth files found in {self.LOCAL_MODELS_DIR}")
-            return
-
-        print(f"[CAMERA PAGE] Found {len(pth_files)} local models.")
-        combo.insertSeparator(combo.count())
-
-        for pth in pth_files:
-            filename = os.path.basename(pth)
-            # Display name matches filename, Data is the full path
-            combo.addItem(f"Local: {filename}", pth)
-
     def _replace_graphics_view(self):
         """Swap standard QGraphicsView with ZoomableGraphicsView at runtime."""
         old_view = self.ui["cam_view"]
@@ -482,6 +498,18 @@ class CameraPageController(QtCore.QObject):
                     self.ui["farm_combo"].blockSignals(True)
                     self.ui["farm_combo"].setCurrentIndex(idx)
                     self.ui["farm_combo"].blockSignals(False)
+
+    def _on_view_details_clicked(self):
+        """Open the large inference table window showing the last inference results."""
+        try:
+            if self._last_preds:
+                self._open_large_table_window(self._last_preds)
+            else:
+                QtWidgets.QMessageBox.information(
+                    self.page, "No Results", "No inference results available."
+                )
+        except Exception as e:
+            print(f"Failed opening large inference window from button: {e}")
 
     def _on_param_changed(self):
         """Called when Confidence or IoU slider is adjusted/released."""
@@ -774,6 +802,16 @@ class CameraPageController(QtCore.QObject):
         self._reset_stats_labels()
         self._last_pixmap = None
         self._current_frame_np = None
+        # Close large inference window if open
+        try:
+            if self._large_table_window is not None:
+                try:
+                    self._large_table_window.close()
+                except Exception:
+                    pass
+                self._large_table_window = None
+        except Exception:
+            pass
         self._update_ui_state()
 
     def _clear_scene(self):
@@ -987,6 +1025,14 @@ class CameraPageController(QtCore.QObject):
         if not result:
             return
 
+        # Parse predictions and store them for use by the viewDetails button.
+        try:
+            preds = parse_result_to_preds(result)
+            # store last preds for manual viewing
+            self._last_preds = preds or []
+        except Exception:
+            self._last_preds = []
+
         # 1. Draw Overlays
         if self.ui["cam_view"] is not None:
             scene = self.ui["cam_view"].scene()
@@ -1002,6 +1048,7 @@ class CameraPageController(QtCore.QObject):
             preds = parse_result_to_preds(result)
             self._update_table(preds)
             self._update_stats(preds)
+            # do not auto-open the large window — user may open via the viewDetails button
         except Exception as e:
             print(f"Data processing failed: {e}")
 
@@ -1110,8 +1157,19 @@ class CameraPageController(QtCore.QObject):
                 if raw_data is not None:
                     it.setData(QtCore.Qt.ItemDataRole.UserRole, raw_data)
                 table.setItem(row, col, it)
-
-            key = p.get("detection_id") or p.get("id") or json.dumps(p, default=str)
+            # construct stable raw_key matching overlays: use detection_id/id or sorted JSON
+            try:
+                key = p.get("detection_id") or p.get("id")
+            except Exception:
+                key = None
+            if key is None:
+                try:
+                    key = json.dumps(p, sort_keys=True, default=str)
+                except Exception:
+                    try:
+                        key = json.dumps(p, default=str)
+                    except Exception:
+                        key = str(p)
 
             set_cell(0, p.get("label", ""), key)
             set_cell(1, f"{p.get('score', 0):.2f}")
@@ -1143,6 +1201,339 @@ class CameraPageController(QtCore.QObject):
                 val = stats.get(key_metric)
                 if val is not None:
                     set_cell(col, f"{val:.2f} {unit}", val)
+
+    def _open_large_table_window(self, preds: List[Dict[str, Any]]):
+        """Create or update a larger separate window that displays the full inference table.
+
+        If the window already exists, update its table contents and raise it to the front.
+        """
+        # Columns: same as _update_table: Label, Score, Color, Area, Perimeter, Major, Minor, Deq, Skeleton
+        headers = [
+            "Label",
+            "Score",
+            "Color",
+            "Area (μm²)",
+            "Perimeter (μm)",
+            "Major (μm)",
+            "Minor (μm)",
+            "Deq (μm)",
+            "Skeleton (μm)",
+        ]
+
+        # Create window if needed. Try to load the `inferenceTable.ui` layout first; fall back to programmatic table.
+        ui_path = os.path.join(os.getcwd(), "mpcamera", "layouts", "inferenceTable.ui")
+
+        if self._large_table_window is None:
+            win = QtWidgets.QMainWindow(self.main_window or self.page)
+            win.setWindowTitle("Inference Results (Large)")
+            win.resize(1100, 700)
+
+            tbl = None
+
+            # Attempt to load the UI file
+            try:
+                if os.path.exists(ui_path):
+                    try:
+                        from PyQt6 import QtUiTools
+
+                        fh = QtCore.QFile(ui_path)
+                        if fh.open(QtCore.QIODevice.OpenModeFlag.ReadOnly):
+                            loader = QtUiTools.QUiLoader()
+                            form = loader.load(fh, self.main_window or self.page)
+                            fh.close()
+                            if form is not None:
+                                # Find the table widget inside loaded form
+                                tbl = form.findChild(
+                                    QtWidgets.QTableWidget, "inferenceTable"
+                                )
+                                if tbl is not None:
+                                    win.setCentralWidget(form)
+                                else:
+                                    # If UI doesn't contain the expected table, discard form
+                                    form.setParent(None)
+                                    form = None
+                    except Exception:
+                        tbl = None
+
+            except Exception:
+                tbl = None
+
+            # If loading UI failed, create the table programmatically
+            if tbl is None:
+                central = QtWidgets.QWidget()
+                win.setCentralWidget(central)
+                layout = QtWidgets.QVBoxLayout(central)
+
+                tbl = QtWidgets.QTableWidget()
+                tbl.setColumnCount(len(headers))
+                tbl.setHorizontalHeaderLabels(headers)
+                layout.addWidget(tbl)
+
+            # Common table setup
+            try:
+                tbl.setEditTriggers(
+                    QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers
+                )
+                tbl.setSelectionBehavior(
+                    QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows
+                )
+                tbl.setSelectionMode(
+                    QtWidgets.QAbstractItemView.SelectionMode.MultiSelection
+                )
+                # Stretch all columns to fill window width
+                for i in range(tbl.columnCount()):
+                    tbl.horizontalHeader().setSectionResizeMode(
+                        i, QtWidgets.QHeaderView.ResizeMode.Stretch
+                    )
+            except Exception:
+                try:
+                    tbl.horizontalHeader().setStretchLastSection(True)
+                except Exception:
+                    pass
+
+            # store references
+            win._table = tbl
+            self._large_table_window = win
+        else:
+            win = self._large_table_window
+            tbl = getattr(win, "_table", None)
+            if tbl is None:
+                # defensive: recreate programmatic table
+                tbl = QtWidgets.QTableWidget()
+                tbl.setColumnCount(len(headers))
+                tbl.setHorizontalHeaderLabels(headers)
+                win.setCentralWidget(tbl)
+                win._table = tbl
+
+        # Populate table
+        try:
+            tbl.setRowCount(0)
+            # We need a current image for color extraction when available
+            current_img = self._current_frame_np
+
+            for p in preds:
+                row = tbl.rowCount()
+                tbl.insertRow(row)
+
+                # label
+                label_text = p.get("label", "")
+                it_label = QtWidgets.QTableWidgetItem(str(label_text))
+                # store the unique key in UserRole to allow selection -> overlay mapping
+                try:
+                    key = p.get("detection_id") or p.get("id")
+                except Exception:
+                    key = None
+                if key is None:
+                    try:
+                        key = json.dumps(p, sort_keys=True, default=str)
+                    except Exception:
+                        try:
+                            key = json.dumps(p, default=str)
+                        except Exception:
+                            key = str(p)
+                try:
+                    it_label.setData(QtCore.Qt.ItemDataRole.UserRole, key)
+                except Exception:
+                    pass
+                tbl.setItem(row, 0, it_label)
+
+                # score
+                score = p.get("score")
+                score_text = f"{score:.2f}" if score is not None else ""
+                it_score = QtWidgets.QTableWidgetItem(score_text)
+                tbl.setItem(row, 1, it_score)
+
+                # color (try extract)
+                color_name = ""
+                if current_img is not None:
+                    try:
+                        pts = p.get("points") or extract_points_from_prediction(
+                            p.get("raw") or {}
+                        )
+                        if pts:
+                            color_name = get_color_name(current_img, pts)
+                    except Exception:
+                        color_name = ""
+                it_color = QtWidgets.QTableWidgetItem(str(color_name))
+                tbl.setItem(row, 2, it_color)
+
+                # metrics calculations
+                stats = self._calculate_morphometrics(
+                    p,
+                    (self._last_pixmap.width() if self._last_pixmap else 0),
+                    (self._last_pixmap.height() if self._last_pixmap else 0),
+                )
+
+                def set_big_cell(c, text):
+                    tbl.setItem(row, c, QtWidgets.QTableWidgetItem(str(text)))
+
+                set_big_cell(
+                    3,
+                    f"{stats.get('area'):.2f}" if stats.get("area") is not None else "",
+                )
+                set_big_cell(
+                    4,
+                    (
+                        f"{stats.get('perimeter'):.2f}"
+                        if stats.get("perimeter") is not None
+                        else ""
+                    ),
+                )
+                set_big_cell(
+                    5,
+                    (
+                        f"{stats.get('major'):.2f}"
+                        if stats.get("major") is not None
+                        else ""
+                    ),
+                )
+                set_big_cell(
+                    6,
+                    (
+                        f"{stats.get('minor'):.2f}"
+                        if stats.get("minor") is not None
+                        else ""
+                    ),
+                )
+                set_big_cell(
+                    7, f"{stats.get('deq'):.2f}" if stats.get("deq") is not None else ""
+                )
+                set_big_cell(
+                    8,
+                    (
+                        f"{stats.get('skeleton'):.2f}"
+                        if stats.get("skeleton") is not None
+                        else ""
+                    ),
+                )
+
+            # Show and raise window
+            try:
+                win.show()
+                win.raise_()
+                win.activateWindow()
+            except Exception:
+                pass
+            # Connect selection changed to highlight overlays in main view
+            try:
+                sel_model = tbl.selectionModel()
+                if sel_model is not None:
+                    # disconnect first if previously connected
+                    try:
+                        sel_model.selectionChanged.disconnect(
+                            self._on_large_table_selection
+                        )
+                    except Exception:
+                        pass
+                    sel_model.selectionChanged.connect(self._on_large_table_selection)
+            except Exception:
+                pass
+            # Add a small toolbar action to show all overlays / clear selection
+            try:
+                try:
+                    tb = win.findChild(QtWidgets.QToolBar, "inferenceToolbar")
+                except Exception:
+                    tb = None
+                if tb is None:
+                    tb = win.addToolBar("inferenceToolbar")
+                    try:
+                        tb.setObjectName("inferenceToolbar")
+                    except Exception:
+                        pass
+
+                # Avoid adding duplicate 'Show All' actions if toolbar already contains one
+                add_act = True
+                try:
+                    for act in tb.actions():
+                        try:
+                            if act.text() == "Show All":
+                                add_act = False
+                                break
+                        except Exception:
+                            continue
+                except Exception:
+                    add_act = True
+
+                if add_act:
+                    show_all_act = QtGui.QAction("Show All", win)
+                    show_all_act.setStatusTip(
+                        "Show all inference overlays and clear selection"
+                    )
+                    show_all_act.triggered.connect(self._show_all_overlays)
+                    tb.addAction(show_all_act)
+            except Exception:
+                pass
+        except Exception as e:
+            print(f"Failed populating large inference table: {e}")
+
+    def _on_large_table_selection(self, selected, deselected):
+        """Highlight overlay(s) corresponding to selected row(s) in the large table.
+
+        Hides overlays that aren't selected (mirrors behavior of `_on_table_selection`).
+        """
+        tbl = None
+        if self._large_table_window is not None:
+            tbl = getattr(self._large_table_window, "_table", None)
+        if tbl is None:
+            return
+
+        scene = self.ui.get("cam_view")
+        scene = scene.scene() if scene is not None else None
+        if scene is None:
+            return
+
+        selected_keys = set()
+        try:
+            for idx in tbl.selectionModel().selectedRows():
+                item = tbl.item(idx.row(), 0)
+                if item:
+                    selected_keys.add(item.data(QtCore.Qt.ItemDataRole.UserRole))
+        except Exception:
+            pass
+
+        show_all = len(selected_keys) == 0
+        # Prefer toggling group child items if an inference group exists
+        try:
+            grp = getattr(scene, "_inference_group", None)
+            items = grp.childItems() if grp is not None else scene.items()
+        except Exception:
+            items = scene.items()
+
+        for it in items:
+            try:
+                if it.data(0) == "inference_overlay":
+                    key = it.data(1)
+                    it.setVisible(show_all or (key in selected_keys))
+            except Exception:
+                pass
+
+    def _show_all_overlays(self):
+        """Clear selection in the large table and show all inference overlays."""
+        try:
+            if self._large_table_window is None:
+                return
+            tbl = getattr(self._large_table_window, "_table", None)
+            if tbl is not None and tbl.selectionModel() is not None:
+                tbl.selectionModel().clearSelection()
+        except Exception:
+            pass
+
+        # Show all overlays in the main scene
+        try:
+            view = self.ui.get("cam_view")
+            if view is None:
+                return
+            scene = view.scene()
+            if scene is None:
+                return
+            for it in scene.items():
+                try:
+                    if it.data(0) == "inference_overlay":
+                        it.setVisible(True)
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     def _update_stats(self, preds):
         try:
@@ -1195,10 +1586,19 @@ class CameraPageController(QtCore.QObject):
                 selected_keys.add(item.data(QtCore.Qt.ItemDataRole.UserRole))
 
         show_all = len(selected_keys) == 0
-        for it in scene.items():
-            if it.data(0) == "inference_overlay":
-                key = it.data(1)
-                it.setVisible(show_all or (key in selected_keys))
+        try:
+            grp = getattr(scene, "_inference_group", None)
+            items = grp.childItems() if grp is not None else scene.items()
+        except Exception:
+            items = scene.items()
+
+        for it in items:
+            try:
+                if it.data(0) == "inference_overlay":
+                    key = it.data(1)
+                    it.setVisible(show_all or (key in selected_keys))
+            except Exception:
+                pass
 
     def _reset_stats_labels(self):
         for k, v in self.ui.items():
