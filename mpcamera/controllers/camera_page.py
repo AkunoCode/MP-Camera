@@ -1,6 +1,5 @@
 ﻿import cv2
 import json
-import csv
 import os
 import glob
 import tempfile
@@ -335,6 +334,19 @@ class CameraPageController(QtCore.QObject):
         if not os.path.exists(self.LOCAL_MODELS_DIR):
             print(f"[CAMERA PAGE] Models directory not found: {self.LOCAL_MODELS_DIR}")
             return
+
+        pth_files = glob.glob(os.path.join(self.LOCAL_MODELS_DIR, "*.pth"))
+        if not pth_files:
+            print(f"[CAMERA PAGE] No .pth files found in {self.LOCAL_MODELS_DIR}")
+            return
+
+        print(f"[CAMERA PAGE] Found {len(pth_files)} local models.")
+        combo.insertSeparator(combo.count())
+
+        for pth in pth_files:
+            filename = os.path.basename(pth)
+            # Display name matches filename, Data is the full path
+            combo.addItem(f"Local: {filename}", pth)
 
     def _replace_graphics_view(self):
         """Swap standard QGraphicsView with ZoomableGraphicsView at runtime."""
@@ -1159,19 +1171,7 @@ class CameraPageController(QtCore.QObject):
                     it.setData(QtCore.Qt.ItemDataRole.UserRole, raw_data)
                 table.setItem(row, col, it)
 
-            # construct stable raw_key matching overlays: use detection_id/id or sorted JSON
-            try:
-                key = p.get("detection_id") or p.get("id")
-            except Exception:
-                key = None
-            if key is None:
-                try:
-                    key = json.dumps(p, sort_keys=True, default=str)
-                except Exception:
-                    try:
-                        key = json.dumps(p, default=str)
-                    except Exception:
-                        key = str(p)
+            key = p.get("detection_id") or p.get("id") or json.dumps(p, default=str)
 
             set_cell(0, p.get("label", ""), key)
             set_cell(1, f"{p.get('score', 0):.2f}")
@@ -1280,7 +1280,7 @@ class CameraPageController(QtCore.QObject):
                     QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows
                 )
                 tbl.setSelectionMode(
-                    QtWidgets.QAbstractItemView.SelectionMode.MultiSelection
+                    QtWidgets.QAbstractItemView.SelectionMode.SingleSelection
                 )
                 # Stretch all columns to fill window width
                 for i in range(tbl.columnCount()):
@@ -1320,23 +1320,6 @@ class CameraPageController(QtCore.QObject):
                 # label
                 label_text = p.get("label", "")
                 it_label = QtWidgets.QTableWidgetItem(str(label_text))
-                # store the unique key in UserRole to allow selection -> overlay mapping
-                try:
-                    key = p.get("detection_id") or p.get("id")
-                except Exception:
-                    key = None
-                if key is None:
-                    try:
-                        key = json.dumps(p, sort_keys=True, default=str)
-                    except Exception:
-                        try:
-                            key = json.dumps(p, default=str)
-                        except Exception:
-                            key = str(p)
-                try:
-                    it_label.setData(QtCore.Qt.ItemDataRole.UserRole, key)
-                except Exception:
-                    pass
                 tbl.setItem(row, 0, it_label)
 
                 # score
@@ -1416,212 +1399,8 @@ class CameraPageController(QtCore.QObject):
                 win.activateWindow()
             except Exception:
                 pass
-            # Connect selection changed to highlight overlays in main view
-            try:
-                sel_model = tbl.selectionModel()
-                if sel_model is not None:
-                    # disconnect first if previously connected
-                    try:
-                        sel_model.selectionChanged.disconnect(
-                            self._on_large_table_selection
-                        )
-                    except Exception:
-                        pass
-                    sel_model.selectionChanged.connect(self._on_large_table_selection)
-            except Exception:
-                pass
-            # Add a small toolbar action to show all overlays / clear selection
-            try:
-                try:
-                    tb = win.findChild(QtWidgets.QToolBar, "inferenceToolbar")
-                except Exception:
-                    tb = None
-                if tb is None:
-                    tb = win.addToolBar("inferenceToolbar")
-                    try:
-                        tb.setObjectName("inferenceToolbar")
-                    except Exception:
-                        pass
-
-                # Try to locate an existing toolbar or action to avoid duplicates
-                # 1) Find by objectName
-                try:
-                    tb_existing = win.findChild(QtWidgets.QToolBar, "inferenceToolbar")
-                except Exception:
-                    tb_existing = None
-
-                tb_found = tb_existing
-                # 2) If not found, search all toolbars for an existing 'Show All' action
-                if tb_found is None:
-                    try:
-                        for t in win.findChildren(QtWidgets.QToolBar):
-                            for act in t.actions():
-                                try:
-                                    if act.text() in ("Show All", "Save as CSV"):
-                                        tb_found = t
-                                        break
-                                except Exception:
-                                    continue
-                            if tb_found is not None:
-                                break
-                    except Exception:
-                        tb_found = None
-
-                # 3) If still not found, create toolbar and name it
-                if tb_found is None:
-                    tb = win.addToolBar("inferenceToolbar")
-                    try:
-                        tb.setObjectName("inferenceToolbar")
-                    except Exception:
-                        pass
-                else:
-                    tb = tb_found
-
-                # Helper to add an action if text not already present
-                def add_unique_action(toolbar, text, callback, status_tip=""):
-                    try:
-                        for act in toolbar.actions():
-                            try:
-                                if act.text() == text:
-                                    return
-                            except Exception:
-                                continue
-                        act = QtGui.QAction(text, win)
-                        if status_tip:
-                            act.setStatusTip(status_tip)
-                        act.triggered.connect(callback)
-                        toolbar.addAction(act)
-                    except Exception:
-                        pass
-
-                # Add Show All (unique)
-                add_unique_action(
-                    tb,
-                    "Show All",
-                    self._show_all_overlays,
-                    "Show all inference overlays and clear selection",
-                )
-
-                # Add Save as CSV (unique)
-                add_unique_action(
-                    tb,
-                    "Save as CSV",
-                    self._save_large_table_csv,
-                    "Save the inference table as CSV",
-                )
-            except Exception:
-                pass
         except Exception as e:
             print(f"Failed populating large inference table: {e}")
-
-    def _on_large_table_selection(self, selected, deselected):
-        """Highlight overlay(s) corresponding to selected row(s) in the large table.
-
-        Hides overlays that aren't selected (mirrors behavior of `_on_table_selection`).
-        """
-        tbl = None
-        if self._large_table_window is not None:
-            tbl = getattr(self._large_table_window, "_table", None)
-        if tbl is None:
-            return
-
-        scene = self.ui.get("cam_view")
-        scene = scene.scene() if scene is not None else None
-        if scene is None:
-            return
-
-        selected_keys = set()
-        try:
-            for idx in tbl.selectionModel().selectedRows():
-                item = tbl.item(idx.row(), 0)
-                if item:
-                    selected_keys.add(item.data(QtCore.Qt.ItemDataRole.UserRole))
-        except Exception:
-            pass
-
-        show_all = len(selected_keys) == 0
-        # Prefer toggling group child items if an inference group exists
-        try:
-            grp = getattr(scene, "_inference_group", None)
-            items = grp.childItems() if grp is not None else scene.items()
-        except Exception:
-            items = scene.items()
-
-        for it in items:
-            try:
-                if it.data(0) == "inference_overlay":
-                    key = it.data(1)
-                    it.setVisible(show_all or (key in selected_keys))
-            except Exception:
-                pass
-
-    def _show_all_overlays(self):
-        """Clear selection in the large table and show all inference overlays."""
-        try:
-            if self._large_table_window is None:
-                return
-            tbl = getattr(self._large_table_window, "_table", None)
-            if tbl is not None and tbl.selectionModel() is not None:
-                tbl.selectionModel().clearSelection()
-        except Exception:
-            pass
-
-    def _save_large_table_csv(self):
-        """Save the large table contents to a CSV file chosen by the user."""
-        if self._large_table_window is None:
-            return
-        tbl = getattr(self._large_table_window, "_table", None)
-        if tbl is None:
-            return
-
-        path, _ = QtWidgets.QFileDialog.getSaveFileName(
-            self.page, "Save CSV", "", "CSV Files (*.csv)"
-        )
-        if not path:
-            return
-
-        try:
-            with open(path, "w", newline="", encoding="utf-8") as fh:
-                writer = csv.writer(fh)
-                # write headers
-                headers = []
-                for c in range(tbl.columnCount()):
-                    hdr_item = tbl.horizontalHeaderItem(c)
-                    headers.append(hdr_item.text() if hdr_item is not None else "")
-                writer.writerow(headers)
-
-                # write rows
-                for r in range(tbl.rowCount()):
-                    row = []
-                    for c in range(tbl.columnCount()):
-                        it = tbl.item(r, c)
-                        row.append(it.text() if it is not None else "")
-                    writer.writerow(row)
-
-            QtWidgets.QMessageBox.information(
-                self.page, "Saved", f"Saved {tbl.rowCount()} rows to {path}"
-            )
-        except Exception as e:
-            QtWidgets.QMessageBox.warning(
-                self.page, "Error", f"Failed to save CSV: {e}"
-            )
-
-        # Show all overlays in the main scene
-        try:
-            view = self.ui.get("cam_view")
-            if view is None:
-                return
-            scene = view.scene()
-            if scene is None:
-                return
-            for it in scene.items():
-                try:
-                    if it.data(0) == "inference_overlay":
-                        it.setVisible(True)
-                except Exception:
-                    pass
-        except Exception:
-            pass
 
     def _update_stats(self, preds):
         try:
@@ -1674,19 +1453,10 @@ class CameraPageController(QtCore.QObject):
                 selected_keys.add(item.data(QtCore.Qt.ItemDataRole.UserRole))
 
         show_all = len(selected_keys) == 0
-        try:
-            grp = getattr(scene, "_inference_group", None)
-            items = grp.childItems() if grp is not None else scene.items()
-        except Exception:
-            items = scene.items()
-
-        for it in items:
-            try:
-                if it.data(0) == "inference_overlay":
-                    key = it.data(1)
-                    it.setVisible(show_all or (key in selected_keys))
-            except Exception:
-                pass
+        for it in scene.items():
+            if it.data(0) == "inference_overlay":
+                key = it.data(1)
+                it.setVisible(show_all or (key in selected_keys))
 
     def _reset_stats_labels(self):
         for k, v in self.ui.items():
@@ -1701,11 +1471,69 @@ class CameraPageController(QtCore.QObject):
                 self.page, "Error", "Directus Client unavailable."
             )
             return
+        table = self.ui.get("inf_table")
 
-        table = self.ui["inf_table"]
+        # If the inline table widget was removed (you moved it to a separate layout),
+        # fall back to using the last parsed predictions stored in `self._last_preds`.
         if table is None:
+            preds = getattr(self, "_last_preds", []) or []
+            if not preds:
+                QtWidgets.QMessageBox.information(
+                    self.page, "No Data", "No measurements to save."
+                )
+                return
+
+            soil_id = None
+            if self.ui.get("soil_combo") is not None:
+                soil_id = self.ui["soil_combo"].currentData()
+
+            # Build payloads from preds using the same fields as the table-based flow
+            payloads = []
+            w = self._last_pixmap.width() if self._last_pixmap else 0
+            h = self._last_pixmap.height() if self._last_pixmap else 0
+            current_img = self._current_frame_np
+
+            for p in preds:
+                try:
+                    stats = self._calculate_morphometrics(p, w, h)
+                    # color extraction
+                    color_name = ""
+                    if current_img is not None:
+                        try:
+                            pts = p.get("points") or extract_points_from_prediction(
+                                p.get("raw") or {}
+                            )
+                            if pts:
+                                color_name = get_color_name(current_img, pts)
+                        except Exception:
+                            color_name = ""
+
+                    item = {
+                        "sample_source": soil_id,
+                        "shape": p.get("label") or "",
+                        "confidence_level": float(p.get("score") or 0),
+                        "color": color_name,
+                        "area_um2": stats.get("area"),
+                        "perimeter_um": stats.get("perimeter"),
+                        "major_axis_um": stats.get("major"),
+                        "minor_axis_um": stats.get("minor"),
+                        "equivalent_circular_diameter_um": stats.get("deq"),
+                        "skeleton_length_um": stats.get("skeleton"),
+                    }
+                    payloads.append({k: v for k, v in item.items() if v is not None})
+                except Exception:
+                    continue
+
+            if not payloads:
+                QtWidgets.QMessageBox.information(
+                    self.page, "No Data", "No measurements to save."
+                )
+                return
+
+            self._start_save_worker(payloads)
             return
 
+        # Otherwise use the table widget as before
         rows = [idx.row() for idx in table.selectionModel().selectedRows()]
         if not rows:
             rows = range(table.rowCount())
@@ -1717,7 +1545,7 @@ class CameraPageController(QtCore.QObject):
             return
 
         soil_id = None
-        if self.ui["soil_combo"] is not None:
+        if self.ui.get("soil_combo") is not None:
             soil_id = self.ui["soil_combo"].currentData()
 
         payloads = []
