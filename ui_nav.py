@@ -50,6 +50,47 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception:
             pass
 
+        # place soilsight_full.png into the center of the homepage (stackedWidget index 0)
+        try:
+            assets_path = os.path.join(
+                os.path.dirname(__file__), "mpcamera", "assets", "soilsight_full.png"
+            )
+            if os.path.exists(assets_path):
+                # try to locate the homepage widget by name or by stacked widget index
+                page = None
+                try:
+                    page = self.findChild(QtWidgets.QWidget, "homePage")
+                except Exception:
+                    page = None
+
+                if page is None and sw is not None:
+                    try:
+                        page = sw.widget(0)
+                    except Exception:
+                        page = None
+
+                if page is not None:
+                    label = QtWidgets.QLabel(page)
+                    pix = QtGui.QPixmap(assets_path)
+                    if not pix.isNull():
+                        label.setPixmap(pix)
+                    label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+                    # Put label into the page's layout, or create a centered one if absent
+                    layout = page.layout()
+                    if layout is None:
+                        v = QtWidgets.QVBoxLayout()
+                        v.setContentsMargins(0, 0, 0, 0)
+                        v.addWidget(
+                            label, alignment=QtCore.Qt.AlignmentFlag.AlignCenter
+                        )
+                        page.setLayout(v)
+                    else:
+                        layout.addWidget(
+                            label, alignment=QtCore.Qt.AlignmentFlag.AlignCenter
+                        )
+        except Exception as e:
+            print("Failed to place soilsight image on homepage:", e)
+
         # mapping from nav widget name -> stacked index
         self.nav_map = {
             "soilsightLogo": 0,
