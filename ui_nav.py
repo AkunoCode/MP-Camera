@@ -92,13 +92,15 @@ class MainWindow(QtWidgets.QMainWindow):
             print("Failed to place soilsight image on homepage:", e)
 
         # mapping from nav widget name -> stacked index
+        # Note: stackedWidget indices are: home=0, farm=1, samples=2, camera=3, settings=4
+        # chartNavButton is handled specially (opens external link) and should not map to the settings index.
         self.nav_map = {
             "soilsightLogo": 0,
             "farmNavButton": 1,
             "samplesNavButton": 2,
             "cameraNavButton": 3,
-            "chartNavButton": 4,
-            "settingsNavButton": 5,
+            "chartNavButton": None,
+            "settingsNavButton": 4,
         }
 
         # mapping from nav widget -> its parent frame name
@@ -250,6 +252,34 @@ class MainWindow(QtWidgets.QMainWindow):
             print("Error setting up samplesPage UI:", e)
         # If a separate chartPage.ui exists, load it into the placeholder page
         # chart page removed: we intentionally do not load chartPage.ui
+        # If a separate settingsPage.ui exists, load it into the placeholder page
+        try:
+            settings_ui_path = os.path.join(
+                os.path.dirname(__file__), "mpcamera", "layouts", "settingsPage.ui"
+            )
+            settings_page = self.findChild(QtWidgets.QWidget, "settingsPage")
+            if settings_page is not None and os.path.exists(settings_ui_path):
+                print("Loading settingsPage UI from:", settings_ui_path)
+                try:
+                    uic.loadUi(settings_ui_path, settings_page)
+                except Exception as e:
+                    print("Failed to load settingsPage.ui into placeholder:", e)
+                try:
+                    from mpcamera.controllers import settings_page as settings_page_module
+
+                    try:
+                        settings_page_module.setup(settings_page, self)
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+            else:
+                print(
+                    "settingsPage placeholder not found or settingsPage.ui missing at:",
+                    settings_ui_path,
+                )
+        except Exception as e:
+            print("Error setting up settingsPage UI:", e)
         # start fetching Directus data in background so pages can populate
         try:
             self._start_directus_fetch()

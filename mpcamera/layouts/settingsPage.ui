@@ -1,0 +1,264 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <widget class="QWidget" name="layoutWidget">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>980</width>
+    <height>720</height>
+   </rect>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout_root">
+   <item>
+    <layout class="QHBoxLayout" name="horizontalLayout">
+     <item>
+      <widget class="QScrollArea" name="leftScrollArea">
+       <property name="widgetResizable">
+        <bool>true</bool>
+       </property>
+       <widget class="QWidget" name="leftScrollAreaWidget">
+        <layout class="QVBoxLayout" name="verticalLayout_left">
+         <property name="spacing">
+          <number>12</number>
+         </property>
+         <property name="leftMargin">
+          <number>18</number>
+         </property>
+         <property name="topMargin">
+          <number>18</number>
+         </property>
+         <property name="rightMargin">
+          <number>18</number>
+         </property>
+         <property name="bottomMargin">
+          <number>18</number>
+         </property>
+
+         <item>
+          <widget class="QWidget" name="cameraGroup">
+           <layout class="QVBoxLayout" name="cameraLayout">
+            <item>
+             <widget class="QLabel" name="cameraLabel">
+              <property name="text">
+               <string>Camera</string>
+              </property>
+              <property name="styleSheet">
+               <string notr="true">QLabel { font-size: 18px; font-weight:bold; background-color:none; }</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <layout class="QGridLayout" name="cameraGrid">
+              <item row="0" column="0">
+               <widget class="QLabel" name="label_res_w">
+                <property name="text"><string>Resolution Width</string></property>
+               </widget>
+              </item>
+              <item row="0" column="1">
+               <widget class="QSpinBox" name="cameraResWidthSpin">
+                <property name="minimum"><number>1</number></property>
+                <property name="maximum"><number>10000</number></property>
+               </widget>
+              </item>
+              <item row="1" column="0">
+               <widget class="QLabel" name="label_res_h">
+                <property name="text"><string>Resolution Height</string></property>
+               </widget>
+              </item>
+              <item row="1" column="1">
+               <widget class="QSpinBox" name="cameraResHeightSpin">
+                <property name="minimum"><number>1</number></property>
+                <property name="maximum"><number>10000</number></property>
+               </widget>
+              </item>
+              <item row="2" column="0">
+               <widget class="QLabel" name="label_fourcc">
+                <property name="text"><string>FOURCC</string></property>
+               </widget>
+              </item>
+              <item row="2" column="1">
+               <widget class="QLineEdit" name="fourccLineEdit"/>
+              </item>
+              <item row="3" column="0">
+               <widget class="QLabel" name="label_force_dshow">
+                <property name="text"><string>Force DirectShow (Windows)</string></property>
+               </widget>
+              </item>
+              <item row="3" column="1">
+               <widget class="QCheckBox" name="forceDirectShowCheck"/>
+              </item>
+             </layout>
+            </item>
+           </layout>
+          </widget>
+         </item>
+
+         <item>
+          <widget class="QWidget" name="streamingGroup">
+           <layout class="QVBoxLayout" name="streamingLayout">
+            <item>
+             <widget class="QLabel" name="streamingLabel">
+              <property name="text"><string>Streaming</string></property>
+              <property name="styleSheet"><string notr="true">QLabel { font-size: 18px; font-weight:bold; }</string></property>
+             </widget>
+            </item>
+            <item>
+             <layout class="QGridLayout" name="streamingGrid">
+              <item row="0" column="0">
+               <widget class="QLabel" name="label_frame_interval"><property name="text"><string>Frame Interval (ms)</string></property></widget>
+              </item>
+              <item row="0" column="1">
+               <widget class="QSpinBox" name="frameIntervalSpin"><property name="minimum"><number>1</number></property><property name="maximum"><number>10000</number></property></widget>
+              </item>
+              <item row="1" column="0">
+               <widget class="QLabel" name="label_inference_interval"><property name="text"><string>Inference Interval (ms)</string></property></widget>
+              </item>
+              <item row="1" column="1">
+               <widget class="QSpinBox" name="inferenceIntervalSpin"><property name="minimum"><number>50</number></property><property name="maximum"><number>60000</number></property></widget>
+              </item>
+             </layout>
+            </item>
+           </layout>
+          </widget>
+         </item>
+
+         <item>
+          <widget class="QWidget" name="measurementGroup">
+           <layout class="QVBoxLayout" name="measurementLayout">
+            <item>
+             <widget class="QLabel" name="measurementLabel"><property name="text"><string>Measurement</string></property><property name="styleSheet"><string notr="true">QLabel { font-size: 18px; font-weight:bold; }</string></property></widget>
+            </item>
+            <item>
+             <layout class="QGridLayout" name="measurementGrid">
+              <item row="0" column="0"><widget class="QLabel" name="label_sensor_w"><property name="text"><string>Sensor Width (mm)</string></property></widget></item>
+              <item row="0" column="1"><widget class="QDoubleSpinBox" name="sensorWidthSpin"><property name="minimum"><double>0.0001</double></property><property name="maximum"><double>1000.0</double></property><property name="decimals"><number>4</number></property></widget></item>
+              <item row="1" column="0"><widget class="QLabel" name="label_sensor_h"><property name="text"><string>Sensor Height (mm)</string></property></widget></item>
+              <item row="1" column="1"><widget class="QDoubleSpinBox" name="sensorHeightSpin"><property name="minimum"><double>0.0001</double></property><property name="maximum"><double>1000.0</double></property><property name="decimals"><number>4</number></property></widget></item>
+              <item row="2" column="0"><widget class="QLabel" name="label_default_mag"><property name="text"><string>Default Magnification</string></property></widget></item>
+              <item row="2" column="1"><widget class="QDoubleSpinBox" name="defaultMagnificationSpin"><property name="minimum"><double>0.01</double></property><property name="maximum"><double>100.0</double></property><property name="decimals"><number>3</number></property></widget></item>
+             </layout>
+            </item>
+           </layout>
+          </widget>
+         </item>
+
+         <item>
+          <widget class="QWidget" name="inferenceGroup">
+           <layout class="QVBoxLayout" name="inferenceLayout">
+            <item>
+             <widget class="QLabel" name="inferenceLabel"><property name="text"><string>Inference</string></property><property name="styleSheet"><string notr="true">QLabel { font-size: 18px; font-weight:bold; }</string></property></widget>
+            </item>
+            <item>
+             <layout class="QGridLayout" name="inferenceGrid">
+              <item row="0" column="0"><widget class="QLabel" name="label_def_conf"><property name="text"><string>Default Confidence</string></property></widget></item>
+              <item row="0" column="1"><widget class="QDoubleSpinBox" name="defaultConfidenceSpin"><property name="minimum"><double>0.0</double></property><property name="maximum"><double>1.0</double></property><property name="singleStep"><double>0.01</double></property><property name="decimals"><number>2</number></property></widget></item>
+              <item row="1" column="0"><widget class="QLabel" name="label_def_iou"><property name="text"><string>Default IoU</string></property></widget></item>
+              <item row="1" column="1"><widget class="QDoubleSpinBox" name="defaultIouSpin"><property name="minimum"><double>0.0</double></property><property name="maximum"><double>1.0</double></property><property name="singleStep"><double>0.01</double></property><property name="decimals"><number>2</number></property></widget></item>
+             </layout>
+            </item>
+           </layout>
+          </widget>
+         </item>
+
+         <item>
+          <widget class="QWidget" name="bcGroup">
+           <layout class="QVBoxLayout" name="bcLayout">
+            <item>
+             <widget class="QLabel" name="bcLabel"><property name="text"><string>Brightness / Contrast</string></property><property name="styleSheet"><string notr="true">QLabel { font-size: 18px; font-weight:bold; }</string></property></widget>
+            </item>
+            <item>
+             <layout class="QGridLayout" name="bcGrid">
+              <item row="0" column="0"><widget class="QLabel" name="label_b_default"><property name="text"><string>Brightness Default</string></property></widget></item>
+              <item row="0" column="1"><widget class="QSpinBox" name="brightnessDefaultSpin"><property name="minimum"><number>0</number></property><property name="maximum"><number>100</number></property></widget></item>
+              <item row="1" column="0"><widget class="QLabel" name="label_c_default"><property name="text"><string>Contrast Default</string></property></widget></item>
+              <item row="1" column="1"><widget class="QSpinBox" name="contrastDefaultSpin"><property name="minimum"><number>0</number></property><property name="maximum"><number>100</number></property></widget></item>
+             </layout>
+            </item>
+           </layout>
+          </widget>
+         </item>
+
+         <item>
+          <widget class="QWidget" name="modelsGroup">
+           <layout class="QVBoxLayout" name="modelsLayout">
+            <item>
+             <widget class="QLabel" name="modelsLabel"><property name="text"><string>Models</string></property><property name="styleSheet"><string notr="true">QLabel { font-size: 18px; font-weight:bold; }</string></property></widget>
+            </item>
+            <item>
+             <layout class="QGridLayout" name="modelsGrid">
+              <item row="0" column="0"><widget class="QLabel" name="label_local_dir"><property name="text"><string>Local Models Dir</string></property></widget></item>
+              <item row="0" column="1"><widget class="QLineEdit" name="localModelsDirLine"/></item>
+              <item row="1" column="0"><widget class="QLabel" name="label_prefer_local"><property name="text"><string>Prefer Local Models</string></property></widget></item>
+              <item row="1" column="1"><widget class="QCheckBox" name="preferLocalCheck"/></item>
+             </layout>
+            </item>
+           </layout>
+          </widget>
+         </item>
+
+         <item>
+          <widget class="QWidget" name="servicesGroup">
+           <layout class="QVBoxLayout" name="servicesLayout">
+            <item>
+             <widget class="QLabel" name="servicesLabel"><property name="text"><string>Services / API Keys</string></property><property name="styleSheet"><string notr="true">QLabel { font-size: 18px; font-weight:bold; }</string></property></widget>
+            </item>
+            <item>
+             <layout class="QGridLayout" name="servicesGrid">
+              <item row="0" column="0"><widget class="QLabel" name="label_rf_key"><property name="text"><string>Roboflow API Key</string></property></widget></item>
+              <item row="0" column="1"><widget class="QLineEdit" name="roboflowApiKeyLine"><property name="echoMode"><enum>QLineEdit::Password</enum></property></widget></item>
+              <item row="1" column="0"><widget class="QLabel" name="label_directus"><property name="text"><string>Directus Bearer Token</string></property></widget></item>
+              <item row="1" column="1"><widget class="QLineEdit" name="directusBearerLine"><property name="echoMode"><enum>QLineEdit::Password</enum></property></widget></item>
+             </layout>
+            </item>
+           </layout>
+          </widget>
+         </item>
+
+        </layout>
+       </widget>
+      </widget>
+     </item>
+     <item>
+      <widget class="QWidget" name="rightColumn">
+       <layout class="QVBoxLayout" name="verticalLayout_right">
+        <property name="leftMargin"><number>12</number></property>
+        <property name="topMargin"><number>12</number></property>
+        <property name="rightMargin"><number>12</number></property>
+        <property name="bottomMargin"><number>12</number></property>
+        <item>
+         <widget class="QLabel" name="titleLabel"><property name="text"><string>Application Settings</string></property><property name="styleSheet"><string notr="true">QLabel { font-size: 22px; font-weight:bold; }</string></property></widget>
+        </item>
+        <item>
+         <widget class="QTextEdit" name="notesText">
+          <property name="readOnly"><bool>true</bool></property>
+          <property name="plainText"><string>Adjust application defaults. Changes are saved when you press "Save Settings".</string></property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="bottomLayout">
+     <item>
+      <spacer name="horizontalSpacer_bottom">
+       <property name="orientation"><enum>Qt::Horizontal</enum></property>
+       <property name="sizeHint"><size><width>40</width><height>20</height></size></property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="saveSettingsButton">
+       <property name="minimumSize"><size><width>140</width><height>40</height></size></property>
+       <property name="text"><string>Save Settings</string></property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+
+ <resources/>
+ <connections/>
+</ui>
