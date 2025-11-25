@@ -532,6 +532,12 @@ class CameraPageController(QtCore.QObject):
             new_view.setMouseTracking(True)
             if new_view.viewport():
                 new_view.viewport().setMouseTracking(True)
+                try:
+                    # Ensure the viewport background defaults to black so
+                    # images/videos have a black letterbox/pad behind them.
+                    new_view.viewport().setStyleSheet("background-color: black;")
+                except Exception:
+                    pass
 
         except ImportError:
             print("ZoomableGraphicsView not found, using default.")
@@ -1111,7 +1117,27 @@ class CameraPageController(QtCore.QObject):
         scene = view.scene()
         if not scene:
             scene = QtWidgets.QGraphicsScene()
+            # ensure scene background is black so any areas not covered by the
+            # pixmap remain black (prevents white/transparent padding)
+            try:
+                scene.setBackgroundBrush(QtGui.QBrush(QtGui.QColor(0, 0, 0)))
+            except Exception:
+                pass
+            try:
+                # also set the view background brush when possible
+                view.setBackgroundBrush(QtGui.QBrush(QtGui.QColor(0, 0, 0)))
+            except Exception:
+                pass
             view.setScene(scene)
+        else:
+            try:
+                scene.setBackgroundBrush(QtGui.QBrush(QtGui.QColor(0, 0, 0)))
+            except Exception:
+                pass
+            try:
+                view.setBackgroundBrush(QtGui.QBrush(QtGui.QColor(0, 0, 0)))
+            except Exception:
+                pass
 
         # Reuse existing pixmap item if available
         pix_item = next(
@@ -1154,7 +1180,18 @@ class CameraPageController(QtCore.QObject):
 
     def _clear_scene(self):
         if self.ui["cam_view"] is not None:
-            self.ui["cam_view"].setScene(QtWidgets.QGraphicsScene())
+            scene = QtWidgets.QGraphicsScene()
+            try:
+                scene.setBackgroundBrush(QtGui.QBrush(QtGui.QColor(0, 0, 0)))
+            except Exception:
+                pass
+            try:
+                self.ui["cam_view"].setBackgroundBrush(
+                    QtGui.QBrush(QtGui.QColor(0, 0, 0))
+                )
+            except Exception:
+                pass
+            self.ui["cam_view"].setScene(scene)
 
     def _on_reload_clicked(self):
         """Handler for reload button: re-run inference on the currently displayed/adjusted image."""
