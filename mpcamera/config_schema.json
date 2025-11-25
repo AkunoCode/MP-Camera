@@ -1,0 +1,136 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "MP-Camera Settings Schema",
+  "description": "Configuration schema for MP-Camera application. Settings are grouped by area: camera, streaming, measurement, inference, models, services, paths, ui, and upload.",
+  "type": "object",
+  "properties": {
+    "camera": {
+      "type": "object",
+      "description": "Camera capture and device-specific settings.",
+      "properties": {
+        "resolution_width": { "type": "integer", "minimum": 1, "default": 1920, "description": "Requested capture width in pixels." },
+        "resolution_height": { "type": "integer", "minimum": 1, "default": 1080, "description": "Requested capture height in pixels." },
+        "fourcc": { "type": "string", "default": "MJPG", "description": "Video codec FOURCC string used by OpenCV (e.g. MJPG, mp4v)." },
+        "force_directshow": { "type": "boolean", "default": true, "description": "On Windows, force OpenCV to use DirectShow (CAP_DSHOW)." },
+        "selected_camera_index": { "type": "integer", "minimum": -1, "default": 0, "description": "Default camera device index or -1 for none." }
+      },
+      "additionalProperties": false
+    },
+    "streaming": {
+      "type": "object",
+      "properties": {
+        "frame_interval_ms": { "type": "integer", "minimum": 1, "default": 33, "description": "Frame timer interval in milliseconds (controls target FPS)." },
+        "inference_interval_ms": { "type": "integer", "minimum": 50, "default": 1000, "description": "Interval between automatic stream inferences in milliseconds." }
+      },
+      "additionalProperties": false
+    },
+    "measurement": {
+      "type": "object",
+      "description": "Physical measurement parameters used to compute μm/pixel and morphometrics.",
+      "properties": {
+        "effective_sensor_width_mm": { "type": "number", "exclusiveMinimum": 0, "default": 23.73, "description": "Active sensor width in millimeters (used by um-per-pixel calculation)." },
+        "effective_sensor_height_mm": { "type": "number", "exclusiveMinimum": 0, "default": 15.87, "description": "Active sensor height in millimeters (used by um-per-pixel calculation)." },
+        "default_magnification": { "type": "number", "exclusiveMinimum": 0, "default": 2.8, "description": "Default total magnification used to seed magnification controls." }
+      },
+      "additionalProperties": false
+    },
+    "brightness_contrast": {
+      "type": "object",
+      "properties": {
+        "brightness_default": { "type": "integer", "minimum": 0, "maximum": 100, "default": 50, "description": "Default brightness slider value (0-100)." },
+        "contrast_default": { "type": "integer", "minimum": 0, "maximum": 100, "default": 50, "description": "Default contrast slider value (0-100)." }
+      },
+      "additionalProperties": false
+    },
+    "inference": {
+      "type": "object",
+      "description": "Global inference-related defaults and overrides.",
+      "properties": {
+        "default_confidence": { "type": "number", "minimum": 0.0, "maximum": 1.0, "default": 0.4, "description": "Default confidence threshold exposed on the camera page slider." },
+        "default_iou": { "type": "number", "minimum": 0.0, "maximum": 1.0, "default": 0.5, "description": "Default IoU (NMS) threshold exposed on the camera page slider." },
+        "local_confidence_threshold": { "type": "number", "minimum": 0.0, "maximum": 1.0, "default": 0.5, "description": "Default confidence used by local models (LocalModelInference)." },
+        "local_iou_threshold": { "type": "number", "minimum": 0.0, "maximum": 1.0, "default": 0.4, "description": "Default IoU used by local models (LocalModelInference)." },
+        "device_preference": { "type": "string", "enum": ["auto", "cpu", "cuda"], "default": "auto", "description": "Device selection for local model inference (auto chooses CUDA if available)." }
+      },
+      "additionalProperties": false
+    },
+    "models": {
+      "type": "object",
+      "properties": {
+        "default_model": {
+          "type": "object",
+          "properties": {
+            "display_name": { "type": "string", "default": "YOLOv11 (Cloud)", "description": "User-friendly name for default model/workflow." },
+            "workflow_id": { "type": "string", "default": "detect-count-and-visualize-2", "description": "Roboflow workflow id for cloud inference or identifier for cloud model." }
+          },
+          "additionalProperties": false
+        },
+        "prefer_local": { "type": "boolean", "default": false, "description": "If true, prefer local .pth models when available." },
+        "local_models_dir": { "type": "string", "default": "mpcamera/models", "description": "Directory scanned for local `.pth` models (relative to project root or absolute)." }
+      },
+      "additionalProperties": false
+    },
+    "services": {
+      "type": "object",
+      "properties": {
+        "roboflow": {
+          "type": "object",
+          "properties": {
+            "api_url": { "type": "string", "format": "uri", "default": "http://localhost:9001", "description": "Roboflow inference HTTP API base URL." },
+            "api_key": { "type": "string", "default": "", "description": "Roboflow API key (sensitive). Applications should treat as secret)." },
+            "workspace": { "type": "string", "default": "soilsight-xstgr", "description": "Roboflow workspace name." },
+            "workflow": { "type": "string", "default": "detect-count-and-visualize-2", "description": "Default Roboflow workflow id." }
+          },
+          "additionalProperties": false
+        },
+        "directus": {
+          "type": "object",
+          "properties": {
+            "api_url": { "type": "string", "format": "uri", "default": "", "description": "Directus base URL (required for uploads)." },
+            "bearer_token": { "type": "string", "default": "", "description": "Directus bearer token (sensitive)." },
+            "timeout_seconds": { "type": "integer", "minimum": 1, "default": 30, "description": "HTTP request timeout for Directus operations in seconds." }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "paths": {
+      "type": "object",
+      "properties": {
+        "models_dir": { "type": "string", "default": "mpcamera/models", "description": "Path used by CLI/test utilities to look for local models." },
+        "validation_images_dir": { "type": "string", "default": "mpcamera/models/validation_set", "description": "Default path for validation images used by `run_validation_inference.py`." },
+        "temp_image_suffix": { "type": "string", "default": ".jpg", "description": "Suffix used when writing temporary adjusted images." }
+      },
+      "additionalProperties": false
+    },
+    "ui": {
+      "type": "object",
+      "properties": {
+        "fixed_window_size": { "type": "boolean", "default": true, "description": "If true, the main window is forced to a fixed size." },
+        "window_width": { "type": "integer", "minimum": 100, "default": 1170 },
+        "window_height": { "type": "integer", "minimum": 100, "default": 760 },
+        "show_overlays_by_default": { "type": "boolean", "default": true, "description": "If true, inference overlays are visible by default when camera/image loads." }
+      },
+      "additionalProperties": false
+    },
+    "upload": {
+      "type": "object",
+      "properties": {
+        "update_aggregates": { "type": "boolean", "default": true, "description": "When true, update soil/site aggregate counters (fiber_count, fragment_count, ...) after uploads." },
+        "auto_upload": { "type": "boolean", "default": true, "description": "If true, automatically upload detected items to Directus when saving results." }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "camera": { "resolution_width": 1920, "resolution_height": 1080, "fourcc": "MJPG", "force_directshow": true },
+      "measurement": { "effective_sensor_width_mm": 23.73, "effective_sensor_height_mm": 15.87, "default_magnification": 2.8 },
+      "inference": { "default_confidence": 0.4, "default_iou": 0.5 },
+      "services": { "roboflow": { "api_url": "http://localhost:9001", "api_key": "", "workflow": "detect-count-and-visualize-2" } },
+      "ui": { "fixed_window_size": true }
+    }
+  ]
+}
