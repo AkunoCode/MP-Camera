@@ -442,7 +442,7 @@ def show_debug_overlays(
         for cx_px, cy_px, lab in pts:
             try:
                 r = max(6, int(min(img_w, img_h) * 0.02))
-                label_text = f"{lab} 1.00"
+                label_text = f"{lab} 100%"
                 color = color_for_label(label_text)
                 he = HoverEllipse(
                     cx_px - r, cy_px - r, r * 2, r * 2, text=label_text, color=color
@@ -649,9 +649,22 @@ def render_predictions_on_scene(scene: QtWidgets.QGraphicsScene, result):
                         if score is not None:
                             try:
                                 sc = float(score)
-                                label_text = f"{label_text} {sc:.2f}"
+                                pct = int(round(sc * 100))
+                                label_text = f"{label_text} {pct}%"
                             except Exception:
-                                label_text = f"{label_text} {score}"
+                                try:
+                                    # fallback: try to display raw score as percentage
+                                    sc = float(score)
+                                    pct = int(round(sc * 100))
+                                    label_text = f"{label_text} {pct}%"
+                                except Exception:
+                                    label_text = f"{label_text} {score}"
+                        # prepend a 1-based sequential index for cross-referencing
+                        try:
+                            seq = getattr(scene, "_inference_overlay_seq", 0)
+                            label_text = f"[{seq+1}] {label_text}"
+                        except Exception:
+                            pass
                         color = color_for_label(label_text)
                         # prefer class-specific colors when possible
                         color = _color_for_class(label, fallback_text=label_text)
@@ -694,7 +707,8 @@ def render_predictions_on_scene(scene: QtWidgets.QGraphicsScene, result):
                         try:
                             if score is not None:
                                 sc = float(score)
-                                hp.setToolTip(f"Class: {label}\nConfidence: {sc:.2f}")
+                                pct = int(round(sc * 100))
+                                hp.setToolTip(f"Class: {label}\nConfidence: {pct}%")
                             else:
                                 hp.setToolTip(f"Class: {label}")
                         except Exception:
@@ -757,9 +771,21 @@ def render_predictions_on_scene(scene: QtWidgets.QGraphicsScene, result):
                 if score is not None:
                     try:
                         sc = float(score)
-                        label_text = f"{label_text} {sc:.2f}"
+                        pct = int(round(sc * 100))
+                        label_text = f"{label_text} {pct}%"
                     except Exception:
-                        label_text = f"{label_text} {score}"
+                        try:
+                            sc = float(score)
+                            pct = int(round(sc * 100))
+                            label_text = f"{label_text} {pct}%"
+                        except Exception:
+                            label_text = f"{label_text} {score}"
+                # prepend a 1-based sequential index for cross-referencing
+                try:
+                    seq = getattr(scene, "_inference_overlay_seq", 0)
+                    label_text = f"[{seq+1}] {label_text}"
+                except Exception:
+                    pass
 
                 color = color_for_label(label_text)
                 color = _color_for_class(label, fallback_text=label_text)
@@ -794,7 +820,8 @@ def render_predictions_on_scene(scene: QtWidgets.QGraphicsScene, result):
                 try:
                     if score is not None:
                         sc = float(score)
-                        he.setToolTip(f"Class: {label}\nConfidence: {sc:.2f}")
+                        pct = int(round(sc * 100))
+                        he.setToolTip(f"Class: {label}\nConfidence: {pct}%")
                     else:
                         he.setToolTip(f"Class: {label}")
                 except Exception:
