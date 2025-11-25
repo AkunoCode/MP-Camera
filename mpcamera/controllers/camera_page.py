@@ -25,6 +25,21 @@ except ImportError:
     DirectusClient = None
 
 # --- Utils & UI Imports ---
+from mpcamera.utils.results_manager import ResultsManager
+from mpcamera.utils.camera_worker import CameraWorker
+
+try:
+    from mpcamera.utils.inference_worker import InferenceWorker
+except Exception:
+    InferenceWorker = None
+try:
+    from mpcamera.utils.form_handler import FormHandler
+except Exception:
+    FormHandler = None
+try:
+    from mpcamera.utils.results_window import ResultsWindow
+except Exception:
+    ResultsWindow = None
 from mpcamera.utils.camera_utils import extract_directus_items, get_site_id_from_sample
 from mpcamera.utils.prediction_utils import extract_points_from_prediction
 from mpcamera.ui.overlays import ensure_overlay_for_view, render_predictions_on_scene
@@ -128,6 +143,30 @@ class CameraPageController(QtCore.QObject):
         self._replace_graphics_view()
         self._init_ui_defaults()
         self._setup_connections()
+
+        # Camera worker (reads frames on its own timer and emits numpy frames)
+        try:
+            self._camera_worker = CameraWorker()
+            self._camera_worker.frame_received.connect(self._on_worker_frame)
+            self._camera_worker.error_occurred.connect(self._on_worker_error)
+        except Exception:
+            self._camera_worker = None
+
+        # Inference worker (runs local or cloud inference in background)
+        try:
+            self._inference_worker = InferenceWorker()
+            self._inference_worker.finished.connect(self._on_inference_worker_finished)
+            self._inference_worker.error.connect(self._on_inference_worker_error)
+        except Exception:
+            self._inference_worker = None
+
+        # Form handler to manage farm/soil combos
+        try:
+            self._form_handler = FormHandler(
+                self.ui.get("farm_combo"), self.ui.get("soil_combo")
+            )
+        except Exception:
+            self._form_handler = None
 
         # --- Data Loading ---
         # Initial load attempt
@@ -676,49 +715,47 @@ class CameraPageController(QtCore.QObject):
         """
         try:
             idx = int(getattr(self, "_selected_camera_index", 0))
-            print(f"[CAMERA] Attempting to open camera index: {idx}")
+            print(f"[CAMERA] Starting camera worker for index: {idx}")
 
-            # 1. Force DirectShow (CAP_DSHOW)
-            self._vc = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
-
-            if not self._vc.isOpened():
-                print("[CAMERA] DSHOW failed, trying default backend...")
-                self._vc = cv2.VideoCapture(idx)
-
-            if self._vc.isOpened():
-                # 3. CRITICAL: Force Resolution for Sony A7C / High-Res Inputs.
-                self._vc.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
-                self._vc.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
-
-                # 4. FORCE MJPG (Fixes Black Screen on Sony)
-                fourcc = cv2.VideoWriter_fourcc(*"MJPG")
-                self._vc.set(cv2.CAP_PROP_FOURCC, fourcc)
-
-                self._streaming = True
-                self._paused = False
-                self._frame_timer.start()
-                self._stream_inference_timer.start()
-                print(f"[CAMERA] Camera {idx} started successfully.")
-            else:
-                print(f"[CAMERA] Failed to open camera index {idx}.")
+            if self._camera_worker is None:
                 QtWidgets.QMessageBox.warning(
-                    self.page,
-                    "Camera Error",
-                    f"Could not open Camera Index {idx}.\n\n"
-                    "If Index 0 failed, try selecting Index 1 or 2 from the dropdown.",
+                    self.page, "Camera Error", "Camera worker unavailable."
                 )
-                self._vc = None
+                return
+
+            # Start worker which opens the device and begins emitting frames
+            self._camera_worker.start_camera(idx)
+
+            # Assume streaming once worker started; worker will emit errors if not
+            self._streaming = True
+            self._paused = False
+            # Start inference timer (worker emits frames on its own)
+            self._stream_inference_timer.start()
 
         except Exception as e:
             print(f"Camera Start Error: {e}")
             traceback.print_exc()
 
     def _stop_camera(self):
-        self._frame_timer.stop()
-        self._stream_inference_timer.stop()
-        if self._vc:
-            self._vc.release()
-        self._vc = None
+        # Stop worker and timers
+        try:
+            if hasattr(self, "_camera_worker") and self._camera_worker:
+                try:
+                    self._camera_worker.stop_camera()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        try:
+            self._frame_timer.stop()
+        except Exception:
+            pass
+        try:
+            self._stream_inference_timer.stop()
+        except Exception:
+            pass
+
         self._streaming = False
         self._inference_running = False
         # Clear the displayed scene and any inference overlays
@@ -744,18 +781,8 @@ class CameraPageController(QtCore.QObject):
 
     def _on_frame_tick(self):
         """Capture frame, convert to QPixmap, display."""
-        if not self._vc or self._paused:
-            return
-
-        ret, frame = self._vc.read()
-        if ret:
-            try:
-                # Keep the raw BGR frame and apply any brightness/contrast adjustments
-                self._raw_frame_np = frame.copy()
-                # Apply adjustments and refresh the displayed pixmap (also updates _current_frame_np)
-                self._apply_adjustments_and_refresh()
-            except Exception:
-                pass
+        # Legacy timer-based frame capture is no longer used when CameraWorker is present.
+        return
 
     def _toggle_capture(self):
         if not self._streaming:
@@ -770,21 +797,36 @@ class CameraPageController(QtCore.QObject):
         combo = self.ui.get("source_combo")
         if combo is None:
             return
-
         combo.blockSignals(True)
         combo.clear()
 
-        # Use QtMultimedia to list available video inputs
-        cameras = QMediaDevices.videoInputs()
+        # Prefer using CameraWorker if available as it wraps QtMultimedia nicely
+        devices = []
+        try:
+            if getattr(self, "_camera_worker", None) is not None:
+                devices = self._camera_worker.get_available_cameras()
+        except Exception:
+            devices = []
 
-        if not cameras:
+        # Fallback to QMediaDevices
+        if not devices:
+            try:
+                cams = QMediaDevices.videoInputs()
+                for i, cam in enumerate(cams):
+                    devices.append({"description": cam.description(), "index": i})
+            except Exception:
+                pass
+
+        if not devices:
             combo.addItem("No cameras detected", -1)
-        else:
-            for i, camera_device in enumerate(cameras):
-                description = camera_device.description()
-                combo.addItem(f"{description}", i)
+            combo.setCurrentIndex(0)
+            combo.blockSignals(False)
+            return
 
-        # Default to the first one or maintain selection
+        for d in devices:
+            desc = d.get("description") or f"Camera {d.get('index')}"
+            combo.addItem(desc, d.get("index"))
+
         combo.setCurrentIndex(0)
         self._selected_camera_index = combo.currentData() or 0
         combo.blockSignals(False)
@@ -809,6 +851,9 @@ class CameraPageController(QtCore.QObject):
         if self._streaming:
             self._stop_camera()
             QtCore.QTimer.singleShot(200, self._start_camera)
+        else:
+            # Not streaming: just update the worker's selected index (no-op until start)
+            pass
 
     # ================= IMAGE HANDLING =================
 
@@ -865,6 +910,30 @@ class CameraPageController(QtCore.QObject):
                     self._run_inference(fname, is_temp=False)
             except Exception as e:
                 print(f"Failed to run inference on uploaded image: {e}")
+
+    def _on_worker_frame(self, frame: np.ndarray):
+        """Handle frames emitted from CameraWorker."""
+        try:
+            if self._paused:
+                return
+            # Keep the raw BGR frame and apply any brightness/contrast adjustments
+            self._raw_frame_np = frame.copy()
+            self._apply_adjustments_and_refresh()
+        except Exception:
+            pass
+
+    def _on_worker_error(self, message: str):
+        try:
+            print(f"[CAMERA WORKER ERROR] {message}")
+            QtWidgets.QMessageBox.warning(self.page, "Camera Error", str(message))
+            # Ensure state consistency
+            self._streaming = False
+            try:
+                self._stream_inference_timer.stop()
+            except Exception:
+                pass
+        except Exception:
+            pass
 
     def _display_pixmap(self, pix: QtGui.QPixmap):
         view = self.ui["cam_view"]
@@ -1028,88 +1097,145 @@ class CameraPageController(QtCore.QObject):
                 self._inference_running = False
 
     def _run_inference(self, path: str, is_temp: bool = False):
-        """Spawns background thread for Inference (Roboflow OR Local)."""
+        """Run inference via `InferenceWorker` when available, otherwise fall back to
+        the legacy threaded implementation.
+        """
         # Show spinner if static image
         if not self._streaming:
             self._toggle_spinner(True)
 
-        # Check if current model is local (set in _on_model_changed)
-        is_local = (
-            self._current_local_model_path is not None
-            and self._current_local_model_path.endswith(".pth")
-        )
-
-        local_model_path = self._current_local_model_path
-
-        # --- RETRIEVE SLIDER VALUES ---
+        # Retrieve slider values
         conf_val = self.DEFAULT_CONFIDENCE
         iou_val = self.DEFAULT_IOU
-
-        # Convert 0-100 int to 0.0-1.0 float
         if self.ui.get("conf_slider") is not None:
             conf_val = self.ui["conf_slider"].value() / 100.0
-
         if self.ui.get("iou_slider") is not None:
             iou_val = self.ui["iou_slider"].value() / 100.0
 
-        # Debug print
-        print(f"[INFERENCE] Running with Conf={conf_val}, IoU={iou_val}")
+        # Determine model_data (either local path or roboflow workflow id)
+        model_data = self._current_local_model_path
+        if not model_data:
+            # extract from model_combo
+            try:
+                mc = self.ui.get("model_combo")
+                if mc is not None:
+                    idx = mc.currentIndex()
+                    model_data = mc.itemData(idx)
+            except Exception:
+                model_data = None
 
+        print(
+            f"[INFERENCE] Running with Conf={conf_val}, IoU={iou_val}, model={model_data}"
+        )
+
+        # Mark running
+        self._inference_running = True
+
+        # Preferred path: use InferenceWorker
+        if getattr(self, "_inference_worker", None) is not None:
+            try:
+                # Worker will emit `finished(preds, raw_result)` when done
+                self._inference_worker.run_inference(
+                    path, model_data, conf=conf_val, iou=iou_val, is_pixmap=False
+                )
+                return
+            except Exception as e:
+                print(f"InferenceWorker invocation failed: {e}")
+
+        # Fallback: legacy threaded implementation (kept for compatibility)
         def worker():
             result = None
             try:
+                is_local = isinstance(model_data, str) and str(model_data).endswith(
+                    ".pth"
+                )
                 if is_local:
-                    # --- LOCAL INFERENCE ---
                     if LocalModelInference is None:
-                        print("LocalModelInference class not available.")
-                        return
+                        raise ImportError("LocalModelInference class not available.")
 
-                    # Lazy Load Engine if not loaded or path changed
                     if (
                         self._local_engine is None
-                        or self._local_engine.model_path != local_model_path
+                        or self._local_engine.model_path != model_data
                     ):
-                        print(f"[WORKER] Loading Local Model: {local_model_path}")
+                        print(f"[WORKER] Loading Local Model: {model_data}")
                         self._local_engine = LocalModelInference(
-                            model_path=local_model_path,
-                            num_classes=self.LOCAL_NUM_CLASSES,
+                            model_path=model_data, num_classes=self.LOCAL_NUM_CLASSES
                         )
 
-                    # Run Prediction with updated Thresholds
-                    # Note: Passing iou_threshold assuming local model utils supports it.
                     json_str = self._local_engine.predict_json(
                         path,
                         confidence_threshold=conf_val,
                         iou_threshold=iou_val,
                         class_map=self.CLASS_MAP,
                     )
-
-                    # Convert JSON string back to object for consistency with existing UI logic
                     result = json.loads(json_str)
-
                 elif RoboflowClient:
-                    # --- CLOUD INFERENCE ---
                     client = RoboflowClient.get_default()
-
-                    # Pass confidence and iou parameters to the workflow
                     try:
                         result = client.run_workflow(
                             path, confidence=conf_val, iou=iou_val
                         )
                     except TypeError:
-                        # Fallback in case client wasn't updated
-                        print(
-                            "[WARNING] RoboflowClient does not support confidence/iou params yet."
-                        )
                         result = client.run_workflow(path)
 
             except Exception as e:
                 print(f"Inference Error: {e}")
                 traceback.print_exc()
+                result = None
             finally:
+                # Emit via the legacy signal so existing handler works
                 self.inference_finished_signal.emit(result, path if is_temp else "")
 
         Thread(target=worker, daemon=True).start()
+
+    def _on_inference_worker_finished(self, preds, raw_result):
+        """Handler for InferenceWorker.finished(preds, raw_result)."""
+        try:
+            self._inference_running = False
+            self._toggle_spinner(False)
+
+            if not preds:
+                return
+
+            # Store last preds for view details
+            try:
+                self._last_preds = preds or []
+            except Exception:
+                self._last_preds = []
+
+            # 1. Draw overlays using raw_result when available
+            try:
+                if self.ui.get("cam_view") is not None and raw_result is not None:
+                    scene = self.ui["cam_view"].scene()
+                    if scene is not None:
+                        try:
+                            render_predictions_on_scene(scene, raw_result)
+                        except Exception as e:
+                            print(f"Overlay render failed: {e}")
+            except Exception:
+                pass
+
+            # 2. Update table / stats
+            try:
+                self._update_table(preds)
+                self._update_stats(preds)
+            except Exception as e:
+                print(f"Data processing failed: {e}")
+
+        except Exception:
+            pass
+
+    def _on_inference_worker_error(self, message: str):
+        try:
+            print(f"[INFERENCE WORKER ERROR] {message}")
+            QtWidgets.QMessageBox.warning(self.page, "Inference Error", str(message))
+            self._inference_running = False
+            try:
+                self._toggle_spinner(False)
+            except Exception:
+                pass
+        except Exception:
+            pass
 
     def _on_inference_finished(self, result, temp_path):
         """Handle results on Main Thread."""
@@ -1171,65 +1297,11 @@ class CameraPageController(QtCore.QObject):
     # ================= MEASUREMENTS & TABLE =================
 
     def _calculate_morphometrics(self, pred, img_w, img_h) -> Dict[str, float]:
-        """Calculate physical measurements."""
+        """Calculate physical measurements using the utility class."""
         mag = self.ui["mag_spin"].value() if self.ui["mag_spin"] is not None else 1.0
-        um_per_px = None
 
-        if img_w and img_h:
-            try:
-                res = calculate_micrometers_per_pixel(mag, img_w, img_h)
-                um_per_px = float(res.get("average_multiplier_um", 0))
-            except Exception:
-                pass
-
-        stats = {
-            k: None for k in ["area", "perimeter", "major", "minor", "deq", "skeleton"]
-        }
-        stats["um_per_px"] = um_per_px
-
-        pts = (
-            pred.get("points")
-            or extract_points_from_prediction(pred.get("raw") or {})
-            or []
-        )
-
-        if len(pts) < 3 or not um_per_px:
-            return stats
-
-        try:
-            arr = np.array(pts, dtype=float)
-
-            # Geometry calcs (Simplified logic)
-            x, y = arr[:, 0], arr[:, 1]
-            area_px = 0.5 * abs(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))
-
-            diffs = np.diff(arr, axis=0, append=arr[:1])
-            perim_px = float(np.sum(np.hypot(diffs[:, 0], diffs[:, 1])))
-
-            # PCA
-            pts_c = arr - arr.mean(axis=0)
-            evals, evecs = np.linalg.eigh(np.cov(pts_c.T))
-            order = np.argsort(evals)[::-1]
-            evecs = evecs[:, order]
-
-            proj1 = pts_c.dot(evecs[:, 0])
-            proj2 = pts_c.dot(evecs[:, 1])
-            major_px = float(proj1.max() - proj1.min())
-            minor_px = float(proj2.max() - proj2.min())
-
-            # Conversions
-            stats["area"] = calculate_area_um2(area_px, um_per_px)
-            stats["perimeter"] = calculate_perimeter_um(perim_px, um_per_px)
-            stats["major"] = calculate_major_axis_um(major_px, um_per_px)
-            stats["minor"] = calculate_minor_axis_um(minor_px, um_per_px)
-            stats["deq"] = calculate_equivalent_circular_diameter(
-                stats["area"] or 0, um_per_px
-            )
-            stats["skeleton"] = calculate_skeleton_length_um(major_px, um_per_px)
-        except Exception:
-            pass
-
-        return stats
+        # Delegate to the new utility class
+        return ResultsManager.calculate_morphometrics(pred, img_w, img_h, mag)
 
     def _update_table(self, preds):
         table = self.ui["inf_table"]
@@ -1293,194 +1365,106 @@ class CameraPageController(QtCore.QObject):
                     set_cell(col, f"{val:.2f} {unit}", val)
 
     def _open_large_table_window(self, preds: List[Dict[str, Any]]):
-        """Create or update a larger separate window that displays the full inference table.
+        """Open or update a dedicated `ResultsWindow` (if available) with predictions.
 
-        If the window already exists, update its table contents and raise it to the front.
+        Falls back to a simple programmatic table when `ResultsWindow` is unavailable.
         """
-        # Columns: same as _update_table: Label, Score, Color, Area, Perimeter, Major, Minor, Deq, Skeleton
-        headers = [
-            "Label",
-            "Score",
-            "Color",
-            "Area (μm²)",
-            "Perimeter (μm)",
-            "Major (μm)",
-            "Minor (μm)",
-            "Deq (μm)",
-            "Skeleton (μm)",
-        ]
-
-        # Create window if needed. Try to load the `inferenceTable.ui` layout first; fall back to programmatic table.
-        ui_path = os.path.join(os.getcwd(), "mpcamera", "layouts", "inferenceTable.ui")
-
-        if self._large_table_window is None:
-            win = QtWidgets.QMainWindow(self.main_window or self.page)
-            win.setWindowTitle("Inference Results (Large)")
-            win.resize(1100, 700)
-
-            tbl = None
-
-            # Attempt to load the UI file
-            try:
-                if os.path.exists(ui_path):
-                    try:
-                        from PyQt6 import QtUiTools
-
-                        fh = QtCore.QFile(ui_path)
-                        if fh.open(QtCore.QIODevice.OpenModeFlag.ReadOnly):
-                            loader = QtUiTools.QUiLoader()
-                            form = loader.load(fh, self.main_window or self.page)
-                            fh.close()
-                            if form is not None:
-                                # Find the table widget inside loaded form
-                                tbl = form.findChild(
-                                    QtWidgets.QTableWidget, "inferenceTable"
-                                )
-                                if tbl is not None:
-                                    win.setCentralWidget(form)
-                                else:
-                                    # If UI doesn't contain the expected table, discard form
-                                    form.setParent(None)
-                                    form = None
-                    except Exception:
-                        tbl = None
-
-            except Exception:
-                tbl = None
-
-            # If loading UI failed, create the table programmatically
-            if tbl is None:
-                central = QtWidgets.QWidget()
-                win.setCentralWidget(central)
-                layout = QtWidgets.QVBoxLayout(central)
-
-                tbl = QtWidgets.QTableWidget()
-                tbl.setColumnCount(len(headers))
-                tbl.setHorizontalHeaderLabels(headers)
-                layout.addWidget(tbl)
-
-            # Common table setup
-            try:
-                tbl.setEditTriggers(
-                    QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers
-                )
-                tbl.setSelectionBehavior(
-                    QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows
-                )
-                tbl.setSelectionMode(
-                    QtWidgets.QAbstractItemView.SelectionMode.SingleSelection
-                )
-                # Stretch all columns to fill window width
-                for i in range(tbl.columnCount()):
-                    tbl.horizontalHeader().setSectionResizeMode(
-                        i, QtWidgets.QHeaderView.ResizeMode.Stretch
-                    )
-            except Exception:
-                try:
-                    tbl.horizontalHeader().setStretchLastSection(True)
-                except Exception:
-                    pass
-
-            # store references
-            win._table = tbl
-            self._large_table_window = win
-        else:
-            win = self._large_table_window
-            tbl = getattr(win, "_table", None)
-            if tbl is None:
-                # defensive: recreate programmatic table
-                tbl = QtWidgets.QTableWidget()
-                tbl.setColumnCount(len(headers))
-                tbl.setHorizontalHeaderLabels(headers)
-                win.setCentralWidget(tbl)
-                win._table = tbl
-
-        # Populate table
         try:
-            tbl.setRowCount(0)
-            # We need a current image for color extraction when available
-            current_img = self._current_frame_np
+            # Create window instance if needed
+            if self._large_table_window is None or (
+                ResultsWindow is not None
+                and not isinstance(self._large_table_window, ResultsWindow)
+            ):
+                if ResultsWindow is not None:
+                    win = ResultsWindow(self.main_window or self.page)
+                else:
+                    # Minimal fallback window
+                    win = QtWidgets.QMainWindow(self.main_window or self.page)
+                    win.setWindowTitle("Inference Results (Large)")
+                    central = QtWidgets.QWidget()
+                    win.setCentralWidget(central)
+                    layout = QtWidgets.QVBoxLayout(central)
+                    tbl = QtWidgets.QTableWidget()
+                    headers = [
+                        "Label",
+                        "Score",
+                        "Color",
+                        "Area (μm²)",
+                        "Perimeter (μm)",
+                        "Major (μm)",
+                        "Minor (μm)",
+                        "Deq (μm)",
+                        "Skeleton (μm)",
+                    ]
+                    tbl.setColumnCount(len(headers))
+                    tbl.setHorizontalHeaderLabels(headers)
+                    layout.addWidget(tbl)
+                    win.table = tbl
 
-            for p in preds:
-                row = tbl.rowCount()
-                tbl.insertRow(row)
+                self._large_table_window = win
+            else:
+                win = self._large_table_window
 
-                # label
-                label_text = p.get("label", "")
-                it_label = QtWidgets.QTableWidgetItem(str(label_text))
-                tbl.setItem(row, 0, it_label)
+            # Populate via ResultsWindow API if available
+            last_pix = getattr(self, "_last_pixmap", None)
+            cur_img = getattr(self, "_current_frame_np", None)
 
-                # score
-                score = p.get("score")
-                score_text = f"{score:.2f}" if score is not None else ""
-                it_score = QtWidgets.QTableWidgetItem(score_text)
-                tbl.setItem(row, 1, it_score)
+            if hasattr(win, "update_data"):
+                try:
+                    win.update_data(preds, last_pix, cur_img)
+                except Exception as e:
+                    print(f"ResultsWindow update failed: {e}")
+            else:
+                # Fallback table population
+                tbl = getattr(win, "table", None)
+                if tbl is None:
+                    tbl = QtWidgets.QTableWidget()
+                    win.setCentralWidget(tbl)
 
-                # color (try extract)
-                color_name = ""
-                if current_img is not None:
-                    try:
-                        pts = p.get("points") or extract_points_from_prediction(
-                            p.get("raw") or {}
+                tbl.setRowCount(0)
+                w = last_pix.width() if last_pix else 0
+                h = last_pix.height() if last_pix else 0
+
+                for p in preds:
+                    row = tbl.rowCount()
+                    tbl.insertRow(row)
+                    tbl.setItem(
+                        row, 0, QtWidgets.QTableWidgetItem(str(p.get("label", "")))
+                    )
+                    score = p.get("score")
+                    tbl.setItem(
+                        row,
+                        1,
+                        QtWidgets.QTableWidgetItem(
+                            f"{score:.2f}" if score is not None else ""
+                        ),
+                    )
+
+                    # color
+                    color_name = ""
+                    if cur_img is not None:
+                        try:
+                            pts = p.get("points") or extract_points_from_prediction(
+                                p.get("raw") or {}
+                            )
+                            if pts:
+                                color_name = get_color_name(cur_img, pts)
+                        except Exception:
+                            pass
+                    tbl.setItem(row, 2, QtWidgets.QTableWidgetItem(str(color_name)))
+
+                    stats = self._calculate_morphometrics(p, w, h)
+                    metrics = ["area", "perimeter", "major", "minor", "deq", "skeleton"]
+                    for i, k in enumerate(metrics):
+                        val = stats.get(k)
+                        tbl.setItem(
+                            row,
+                            3 + i,
+                            QtWidgets.QTableWidgetItem(
+                                f"{val:.2f}" if val is not None else ""
+                            ),
                         )
-                        if pts:
-                            color_name = get_color_name(current_img, pts)
-                    except Exception:
-                        color_name = ""
-                it_color = QtWidgets.QTableWidgetItem(str(color_name))
-                tbl.setItem(row, 2, it_color)
 
-                # metrics calculations
-                stats = self._calculate_morphometrics(
-                    p,
-                    (self._last_pixmap.width() if self._last_pixmap else 0),
-                    (self._last_pixmap.height() if self._last_pixmap else 0),
-                )
-
-                def set_big_cell(c, text):
-                    tbl.setItem(row, c, QtWidgets.QTableWidgetItem(str(text)))
-
-                set_big_cell(
-                    3,
-                    f"{stats.get('area'):.2f}" if stats.get("area") is not None else "",
-                )
-                set_big_cell(
-                    4,
-                    (
-                        f"{stats.get('perimeter'):.2f}"
-                        if stats.get("perimeter") is not None
-                        else ""
-                    ),
-                )
-                set_big_cell(
-                    5,
-                    (
-                        f"{stats.get('major'):.2f}"
-                        if stats.get("major") is not None
-                        else ""
-                    ),
-                )
-                set_big_cell(
-                    6,
-                    (
-                        f"{stats.get('minor'):.2f}"
-                        if stats.get("minor") is not None
-                        else ""
-                    ),
-                )
-                set_big_cell(
-                    7, f"{stats.get('deq'):.2f}" if stats.get("deq") is not None else ""
-                )
-                set_big_cell(
-                    8,
-                    (
-                        f"{stats.get('skeleton'):.2f}"
-                        if stats.get("skeleton") is not None
-                        else ""
-                    ),
-                )
-
-            # Show and raise window
             try:
                 win.show()
                 win.raise_()
@@ -1488,7 +1472,7 @@ class CameraPageController(QtCore.QObject):
             except Exception:
                 pass
         except Exception as e:
-            print(f"Failed populating large inference table: {e}")
+            print(f"Failed opening large results window: {e}")
 
     def _update_stats(self, preds):
         try:
@@ -1662,161 +1646,30 @@ class CameraPageController(QtCore.QObject):
 
     def _start_save_worker(self, payloads):
         """Spawns worker to upload image and records."""
+
+        # Save the image to a temp path before starting thread
         img_path = None
         if self._last_pixmap:
-            t = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
-            t.close()
-            self._last_pixmap.save(t.name, "JPG")
-            img_path = t.name
+            try:
+                t = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
+                t.close()
+                self._last_pixmap.save(t.name, "JPG")
+                img_path = t.name
+            except Exception as e:
+                print(f"Error saving temp image: {e}")
 
         def worker():
             count = 0
             try:
+                # Initialize client inside the thread
                 client = DirectusClient()
-                img_id = None
 
-                if img_path:
-                    try:
-                        resp = client.upload_file(img_path)
-                        if isinstance(resp, dict) and "data" in resp:
-                            img_id = resp["data"].get("id")
-                    finally:
-                        try:
-                            os.remove(img_path)
-                        except Exception:
-                            pass
-
-                # Track successful creations per-shape so we can increment aggregates
-                shape_counters = {
-                    "fiber_count": 0,
-                    "fragment_count": 0,
-                    "sheets_count": 0,
-                    "foam_count": 0,
-                    "film_count": 0,
-                    "beads_count": 0,
-                }
-
-                # Helper to map shape label to soilsample/site field
-                def _shape_to_field(shape_label: str) -> Optional[str]:
-                    if not shape_label:
-                        return None
-                    s = str(shape_label).strip().lower()
-                    if s in ("fiber", "fibers"):
-                        return "fiber_count"
-                    if s in ("fragment", "fragments"):
-                        return "fragment_count"
-                    if s in ("sheet", "sheets"):
-                        return "sheets_count"
-                    if s in ("foam", "foams"):
-                        return "foam_count"
-                    if s in ("film", "films"):
-                        return "film_count"
-                    if s in ("bead", "beads", "pellet"):
-                        return "beads_count"
-                    return None
-
-                # The soilsample referenced by payloads (all payloads share same sample_source)
-                soil_id = None
-                if payloads:
-                    soil_id = payloads[0].get("sample_source")
-
-                for p in payloads:
-                    try:
-                        if img_id:
-                            p["image"] = img_id
-                        resp = client.create_microplastic(p)
-                        # Count only on success
-                        count += 1
-                        field = _shape_to_field(p.get("shape"))
-                        if field:
-                            shape_counters[field] = shape_counters.get(field, 0) + 1
-                    except Exception as e:
-                        print(f"Failed to create microplastic record: {e}")
-
-                # If we created any records and have a soilsample, update aggregate counts
-                if soil_id and any(v > 0 for v in shape_counters.values()):
-                    try:
-                        # Retrieve soilsamples and find the matching sample
-                        soils_resp = client.get_soilsamples()
-                        soils = []
-                        if isinstance(soils_resp, dict) and "data" in soils_resp:
-                            soils = soils_resp.get("data") or []
-                        elif isinstance(soils_resp, list):
-                            soils = soils_resp
-
-                        sample = next(
-                            (s for s in soils if s.get("id") == soil_id), None
-                        )
-
-                        if sample is not None:
-                            # Prepare update payload by adding to existing numeric fields
-                            update_data = {}
-                            for field, delta in shape_counters.items():
-                                if delta <= 0:
-                                    continue
-                                try:
-                                    existing = int(sample.get(field) or 0)
-                                except Exception:
-                                    existing = 0
-                                update_data[field] = existing + delta
-
-                            if update_data:
-                                try:
-                                    client.update_soilsample(soil_id, update_data)
-                                except Exception as e:
-                                    print(f"Failed to update soilsample {soil_id}: {e}")
-
-                            # Now update the parent site aggregates (best-effort incremental)
-                            site_id = None
-                            # try a few common keys for the relationship
-                            for rel in ("site", "site_id", "farm"):
-                                if rel in sample:
-                                    site_id = sample.get(rel)
-                                    break
-
-                            if site_id:
-                                try:
-                                    sites_resp = client.get_sites()
-                                    sites = []
-                                    if (
-                                        isinstance(sites_resp, dict)
-                                        and "data" in sites_resp
-                                    ):
-                                        sites = sites_resp.get("data") or []
-                                    elif isinstance(sites_resp, list):
-                                        sites = sites_resp
-
-                                    site = next(
-                                        (s for s in sites if s.get("id") == site_id),
-                                        None,
-                                    )
-                                    if site is not None:
-                                        site_update = {}
-                                        for field, delta in shape_counters.items():
-                                            if delta <= 0:
-                                                continue
-                                            try:
-                                                existing = int(site.get(field) or 0)
-                                            except Exception:
-                                                existing = 0
-                                            site_update[field] = existing + delta
-
-                                        if site_update:
-                                            try:
-                                                client.update_site(site_id, site_update)
-                                            except Exception as e:
-                                                print(
-                                                    f"Failed to update site {site_id}: {e}"
-                                                )
-
-                                except Exception as e:
-                                    print(f"Site aggregate update failed: {e}")
-
-                    except Exception as e:
-                        print(f"Save worker aggregate update error: {e}")
+                # Delegate heavy lifting to the new utility class
+                count = ResultsManager.process_upload(client, payloads, img_path)
 
             except Exception as e:
                 print(f"Save Worker Error: {e}")
+                traceback.print_exc()
 
             self.data_saved_signal.emit(count)
 
