@@ -19,8 +19,8 @@ class LocalModelInference:
         self,
         model_path,
         num_classes,
-        confidence_threshold=0.5,
-        iou_threshold=0.4,
+        confidence_threshold=None,
+        iou_threshold=None,
         device=None,
     ):
         """
@@ -28,11 +28,39 @@ class LocalModelInference:
         """
         self.model_path = model_path
         self.num_classes = num_classes
+        # If thresholds not provided, prefer app settings
+        try:
+            from mpcamera.config import get_settings
+
+            cfg = get_settings()
+            if confidence_threshold is None:
+                confidence_threshold = float(
+                    getattr(cfg.inference, "local_confidence_threshold", 0.5)
+                )
+            if iou_threshold is None:
+                iou_threshold = float(
+                    getattr(cfg.inference, "local_iou_threshold", 0.4)
+                )
+            if device is None:
+                pref = getattr(cfg.inference, "device_preference", "auto")
+                if pref == "cpu":
+                    device = "cpu"
+                elif pref == "cuda":
+                    device = "cuda"
+                else:
+                    device = "cuda" if torch.cuda.is_available() else "cpu"
+        except Exception:
+            # fallback
+            if confidence_threshold is None:
+                confidence_threshold = 0.5
+            if iou_threshold is None:
+                iou_threshold = 0.4
+            if device is None:
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+
         self.confidence_threshold = confidence_threshold
         self.iou_threshold = iou_threshold
-        self.device = (
-            device if device else ("cuda" if torch.cuda.is_available() else "cpu")
-        )
+        self.device = device
 
         print(f"[INFO] Loading {os.path.basename(model_path)} on {self.device}...")
 

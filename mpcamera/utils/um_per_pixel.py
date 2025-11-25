@@ -21,8 +21,8 @@ def calculate_micrometers_per_pixel(
     M_total: float,
     P_width: int,
     P_height: int,
-    effective_sensor_width_mm: float = EFFECTIVE_SENSOR_WIDTH_MM,
-    effective_sensor_height_mm: float = EFFECTIVE_SENSOR_HEIGHT_MM,
+    effective_sensor_width_mm: float | None = None,
+    effective_sensor_height_mm: float | None = None,
 ) -> Dict[str, float]:
     """Calculate micrometers-per-pixel for given imaging setup.
 
@@ -51,6 +51,27 @@ def calculate_micrometers_per_pixel(
 
     if M_total <= 0 or P_width <= 0 or P_height <= 0:
         raise ValueError("All inputs must be positive and non-zero")
+
+    # If caller didn't pass sensor dimensions, try reading from app settings
+    if effective_sensor_width_mm is None or effective_sensor_height_mm is None:
+        try:
+            from mpcamera.config import get_settings
+
+            cfg = get_settings()
+            if effective_sensor_width_mm is None:
+                effective_sensor_width_mm = float(
+                    cfg.measurement.effective_sensor_width_mm
+                )
+            if effective_sensor_height_mm is None:
+                effective_sensor_height_mm = float(
+                    cfg.measurement.effective_sensor_height_mm
+                )
+        except Exception:
+            # fallback to module constants
+            if effective_sensor_width_mm is None:
+                effective_sensor_width_mm = EFFECTIVE_SENSOR_WIDTH_MM
+            if effective_sensor_height_mm is None:
+                effective_sensor_height_mm = EFFECTIVE_SENSOR_HEIGHT_MM
 
     # 1) Field of View (FOV) in μm (allow override via parameters)
     fov_width_um = (effective_sensor_width_mm / M_total) * MM_TO_UM

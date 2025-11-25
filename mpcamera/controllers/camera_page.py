@@ -10,6 +10,7 @@ from threading import Thread
 from typing import Optional, List, Dict, Any
 
 from PyQt6 import QtWidgets, QtCore, QtGui
+from mpcamera.config import get_settings
 
 # --- CAMERA DETECTION IMPORT ---
 from PyQt6.QtMultimedia import QMediaDevices
@@ -135,6 +136,62 @@ class CameraPageController(QtCore.QObject):
         self._stream_inference_timer = QtCore.QTimer()
         self._stream_inference_timer.setInterval(self.INFERENCE_INTERVAL_MS)
         self._stream_inference_timer.timeout.connect(self._maybe_run_stream_inference)
+
+        # Override class/static defaults with user settings when available
+        try:
+            cfg = get_settings()
+            # Timers
+            try:
+                self._frame_timer.setInterval(int(cfg.streaming.frame_interval_ms))
+            except Exception:
+                pass
+            try:
+                self._stream_inference_timer.setInterval(
+                    int(cfg.streaming.inference_interval_ms)
+                )
+            except Exception:
+                pass
+
+            # Inference defaults
+            try:
+                self.DEFAULT_CONFIDENCE = float(cfg.inference.default_confidence)
+            except Exception:
+                pass
+            try:
+                self.DEFAULT_IOU = float(cfg.inference.default_iou)
+            except Exception:
+                pass
+
+            # Model defaults and local models dir
+            try:
+                dm = cfg.models.default_model
+                # expected shape from schema: {display_name, workflow_id}
+                self.DEFAULT_MODEL = (
+                    str(dm.get("display_name", "")),
+                    str(dm.get("workflow_id", "")),
+                )
+            except Exception:
+                pass
+            try:
+                self.LOCAL_MODELS_DIR = str(cfg.models.local_models_dir)
+            except Exception:
+                pass
+
+            # Brightness / contrast defaults
+            try:
+                self._brightness_default = int(
+                    cfg.brightness_contrast.brightness_default
+                )
+            except Exception:
+                self._brightness_default = 50
+            try:
+                self._contrast_default = int(cfg.brightness_contrast.contrast_default)
+            except Exception:
+                self._contrast_default = 50
+        except Exception:
+            # no settings available; keep class defaults
+            self._brightness_default = 50
+            self._contrast_default = 50
 
         # --- Init Sequence ---
         self.ui = self._find_ui_elements()
@@ -294,19 +351,8 @@ class CameraPageController(QtCore.QObject):
         if ui["iou_slider"] is not None:
             ui["iou_slider"].sliderReleased.connect(self._on_param_changed)
             ui["iou_slider"].valueChanged.connect(self._update_param_labels)
-        # Brightness/Contrast sliders update the displayed frame immediately
-        if ui.get("brightness_slider") is not None:
-            ui["brightness_slider"].setRange(0, 100)
-            ui["brightness_slider"].setValue(50)
-            ui["brightness_slider"].valueChanged.connect(
-                self._on_brightness_contrast_changed
-            )
-        if ui.get("contrast_slider") is not None:
-            ui["contrast_slider"].setRange(0, 100)
-            ui["contrast_slider"].setValue(50)
-            ui["contrast_slider"].valueChanged.connect(
-                self._on_brightness_contrast_changed
-            )
+        # Note: brightness/contrast sliders are initialized in _init_ui_defaults
+        # so that their values are applied before the first _apply_adjustments_and_refresh call.
 
         # Worker signals
         self.inference_finished_signal.connect(self._on_inference_finished)
@@ -354,6 +400,39 @@ class CameraPageController(QtCore.QObject):
         except Exception:
             pass
 
+        # Initialize Brightness/Contrast sliders so adjustments apply immediately
+        try:
+            b_slider = self.ui.get("brightness_slider")
+            c_slider = self.ui.get("contrast_slider")
+            if b_slider is not None:
+                b_slider.setRange(0, 100)
+                try:
+                    b_slider.setValue(int(self._brightness_default))
+                except Exception:
+                    b_slider.setValue(50)
+                b_slider.valueChanged.connect(self._on_brightness_contrast_changed)
+                try:
+                    b_slider.sliderReleased.connect(
+                        self._on_brightness_contrast_released
+                    )
+                except Exception:
+                    pass
+            if c_slider is not None:
+                c_slider.setRange(0, 100)
+                try:
+                    c_slider.setValue(int(self._contrast_default))
+                except Exception:
+                    c_slider.setValue(50)
+                c_slider.valueChanged.connect(self._on_brightness_contrast_changed)
+                try:
+                    c_slider.sliderReleased.connect(
+                        self._on_brightness_contrast_released
+                    )
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
         # Init Model Combo
         combo = self.ui["model_combo"]
         if combo is not None:
@@ -380,6 +459,24 @@ class CameraPageController(QtCore.QObject):
         # Populate camera source combo (detect available cameras)
         try:
             self._populate_source_combo()
+        except Exception:
+            pass
+
+        # Initialize magnification control from settings when present
+        try:
+            mag = self.ui.get("mag_spin")
+            if mag is not None:
+                try:
+                    cfg = get_settings()
+                    mag_val = float(cfg.measurement.default_magnification)
+                    mag.setValue(mag_val)
+                except Exception:
+                    # leave widget default
+                    pass
+                try:
+                    mag.editingFinished.connect(self._on_magnification_changed)
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -616,6 +713,71 @@ class CameraPageController(QtCore.QObject):
         """Handler when brightness/contrast sliders change; refresh displayed frame."""
         try:
             self._apply_adjustments_and_refresh()
+        except Exception:
+            pass
+
+    def _on_brightness_contrast_released(self):
+        """Called when user finishes adjusting brightness/contrast; persist defaults."""
+        try:
+            self._save_ui_settings()
+        except Exception:
+            pass
+
+    def _on_magnification_changed(self):
+        """Persist magnification when editing finished."""
+        try:
+            self._save_ui_settings()
+        except Exception:
+            pass
+
+    def _save_ui_settings(self):
+        """Persist current UI defaults (brightness, contrast, magnification) to user config."""
+        try:
+            settings = get_settings()
+            # Ensure nested structures exist
+            if not hasattr(settings, "brightness_contrast"):
+                settings["brightness_contrast"] = {}
+            if not hasattr(settings, "measurement"):
+                settings["measurement"] = {}
+
+            b = None
+            c = None
+            mag = None
+
+            try:
+                b_widget = self.ui.get("brightness_slider")
+                if b_widget is not None:
+                    b = int(b_widget.value())
+            except Exception:
+                b = None
+            try:
+                c_widget = self.ui.get("contrast_slider")
+                if c_widget is not None:
+                    c = int(c_widget.value())
+            except Exception:
+                c = None
+            try:
+                mag_widget = self.ui.get("mag_spin")
+                if mag_widget is not None:
+                    mag = float(mag_widget.value())
+            except Exception:
+                mag = None
+
+            if b is not None:
+                settings["brightness_contrast"]["brightness_default"] = b
+                self._brightness_default = b
+            if c is not None:
+                settings["brightness_contrast"]["contrast_default"] = c
+                self._contrast_default = c
+            if mag is not None:
+                settings["measurement"]["default_magnification"] = mag
+
+            # Persist to disk
+            try:
+                settings.save()
+            except Exception:
+                # Best-effort: ignore save failures
+                pass
         except Exception:
             pass
 
@@ -877,11 +1039,17 @@ class CameraPageController(QtCore.QObject):
                 # Use middle of range (50) as default — keep signals blocked to avoid duplicate refresh
                 if b_slider is not None:
                     b_slider.blockSignals(True)
-                    b_slider.setValue(50)
+                    try:
+                        b_slider.setValue(int(self._brightness_default))
+                    except Exception:
+                        b_slider.setValue(50)
                     b_slider.blockSignals(False)
                 if c_slider is not None:
                     c_slider.blockSignals(True)
-                    c_slider.setValue(50)
+                    try:
+                        c_slider.setValue(int(self._contrast_default))
+                    except Exception:
+                        c_slider.setValue(50)
                     c_slider.blockSignals(False)
             except Exception:
                 pass
