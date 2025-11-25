@@ -61,22 +61,36 @@ class SettingsPageController:
                 set_if("cameraResWidthSpin", int(cfg.camera.resolution_width))
                 set_if("cameraResHeightSpin", int(cfg.camera.resolution_height))
                 set_if("fourccLineEdit", cfg.camera.fourcc, setter="setText")
-                set_if("forceDirectShowCheck", bool(cfg.camera.force_directshow), setter="setChecked")
+                set_if(
+                    "forceDirectShowCheck",
+                    bool(cfg.camera.force_directshow),
+                    setter="setChecked",
+                )
             except Exception:
                 pass
 
             # Streaming
             try:
                 set_if("frameIntervalSpin", int(cfg.streaming.frame_interval_ms))
-                set_if("inferenceIntervalSpin", int(cfg.streaming.inference_interval_ms))
+                set_if(
+                    "inferenceIntervalSpin", int(cfg.streaming.inference_interval_ms)
+                )
             except Exception:
                 pass
 
             # Measurement
             try:
-                set_if("sensorWidthSpin", float(cfg.measurement.effective_sensor_width_mm))
-                set_if("sensorHeightSpin", float(cfg.measurement.effective_sensor_height_mm))
-                set_if("defaultMagnificationSpin", float(cfg.measurement.default_magnification))
+                set_if(
+                    "sensorWidthSpin", float(cfg.measurement.effective_sensor_width_mm)
+                )
+                set_if(
+                    "sensorHeightSpin",
+                    float(cfg.measurement.effective_sensor_height_mm),
+                )
+                set_if(
+                    "defaultMagnificationSpin",
+                    float(cfg.measurement.default_magnification),
+                )
             except Exception:
                 pass
 
@@ -89,22 +103,41 @@ class SettingsPageController:
 
             # Brightness/Contrast
             try:
-                set_if("brightnessDefaultSpin", int(cfg.brightness_contrast.brightness_default))
-                set_if("contrastDefaultSpin", int(cfg.brightness_contrast.contrast_default))
+                set_if(
+                    "brightnessDefaultSpin",
+                    int(cfg.brightness_contrast.brightness_default),
+                )
+                set_if(
+                    "contrastDefaultSpin", int(cfg.brightness_contrast.contrast_default)
+                )
             except Exception:
                 pass
 
             # Models
             try:
-                set_if("localModelsDirLine", cfg.models.local_models_dir, setter="setText")
-                set_if("preferLocalCheck", bool(cfg.models.prefer_local), setter="setChecked")
+                set_if(
+                    "localModelsDirLine", cfg.models.local_models_dir, setter="setText"
+                )
+                set_if(
+                    "preferLocalCheck",
+                    bool(cfg.models.prefer_local),
+                    setter="setChecked",
+                )
             except Exception:
                 pass
 
             # Services
             try:
-                set_if("roboflowApiKeyLine", cfg.services.roboflow.api_key, setter="setText")
-                set_if("directusBearerLine", cfg.services.directus.bearer_token, setter="setText")
+                set_if(
+                    "roboflowApiKeyLine",
+                    cfg.services.roboflow.api_key,
+                    setter="setText",
+                )
+                set_if(
+                    "directusBearerLine",
+                    cfg.services.directus.bearer_token,
+                    setter="setText",
+                )
             except Exception:
                 pass
 

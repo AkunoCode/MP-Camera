@@ -265,7 +265,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 except Exception as e:
                     print("Failed to load settingsPage.ui into placeholder:", e)
                 try:
-                    from mpcamera.controllers import settings_page as settings_page_module
+                    from mpcamera.controllers import (
+                        settings_page as settings_page_module,
+                    )
 
                     try:
                         settings_page_module.setup(settings_page, self)
