@@ -213,7 +213,7 @@ background-color:white;
           <x>0</x>
           <y>0</y>
           <width>711</width>
-          <height>769</height>
+          <height>761</height>
          </rect>
         </property>
         <layout class="QVBoxLayout" name="verticalLayout_5">
@@ -510,15 +510,15 @@ font-weight: bold;
              <item>
               <widget class="QLabel" name="label_11">
                <property name="sizePolicy">
-                <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+                <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
                  <horstretch>0</horstretch>
                  <verstretch>0</verstretch>
                 </sizepolicy>
                </property>
                <property name="minimumSize">
                 <size>
-                 <width>5</width>
-                 <height>5</height>
+                 <width>30</width>
+                 <height>30</height>
                 </size>
                </property>
                <property name="text">
@@ -546,7 +546,7 @@ font-weight: bold;
                <property name="minimumSize">
                 <size>
                  <width>0</width>
-                 <height>350</height>
+                 <height>360</height>
                 </size>
                </property>
                <property name="maximum">
@@ -595,20 +595,20 @@ background-color:black;
            <item>
             <layout class="QVBoxLayout" name="verticalLayout_10">
              <property name="topMargin">
-              <number>10</number>
+              <number>0</number>
              </property>
              <item>
               <widget class="QLabel" name="label_7">
                <property name="sizePolicy">
-                <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+                <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
                  <horstretch>0</horstretch>
                  <verstretch>0</verstretch>
                 </sizepolicy>
                </property>
                <property name="minimumSize">
                 <size>
-                 <width>5</width>
-                 <height>5</height>
+                 <width>30</width>
+                 <height>30</height>
                 </size>
                </property>
                <property name="text">
@@ -636,7 +636,7 @@ background-color:black;
                <property name="minimumSize">
                 <size>
                  <width>0</width>
-                 <height>350</height>
+                 <height>360</height>
                 </size>
                </property>
                <property name="maximum">
