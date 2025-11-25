@@ -1,54 +1,31 @@
-"""Configuration loader/saver for MP-Camera.
-
-Features:
-- Loads defaults from `config_schema.json` shipped in the package.
-- Validates user config against the schema using `jsonschema` when available.
-- Merges user config over defaults and exposes a `Settings` object (dict-like and attribute access).
-- Persists user config to a JSON file (default: `%USERPROFILE%/.mpcamera/config.json` on Windows or `$HOME/.mpcamera/config.json`).
-
-Usage:
-    from mpcamera.config import Settings
-    s = Settings.load()  # loads default + user's file if present
-    print(s.inference.default_confidence)
-    s.inference.default_confidence = 0.45
-    s.save()
-
-The module avoids hard failures when `jsonschema` is not installed; it will still load and save config but skip strict validation.
-"""
+"""Configuration loader/saver for MP-Camera."""
 
 from __future__ import annotations
 
 import json
-import os
+import sys
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
-# Try to import jsonschema for validation; fall back gracefully
+# Optional dependency: jsonschema
 try:
     import jsonschema  # type: ignore
 
     _HAS_JSONSCHEMA = True
-except Exception:  # pragma: no cover - optional dependency
+except ImportError:
     _HAS_JSONSCHEMA = False
 
+# Constants
+SCHEMA_PATH = Path(__file__).resolve().parent / "config_schema.json"
+DEFAULT_USER_CONFIG = Path.home() / ".mpcamera" / "config.json"
 
-_SCHEMA_PATH = Path(__file__).resolve().parent / "config_schema.json"
-
-
-def _load_schema() -> Dict[str, Any]:
-    try:
-        with _SCHEMA_PATH.open("r", encoding="utf-8") as fh:
-            return json.load(fh)
-    except Exception as e:  # pragma: no cover - simple file read
-        raise RuntimeError(f"Failed to load config schema: {_SCHEMA_PATH}: {e}")
+# Global singleton cache
+_GLOBAL_SETTINGS: Settings | None = None
 
 
-def _deep_update(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
-    """Recursively update `base` with values from `override` (non-destructive).
-
-    Returns a new dict (does not mutate inputs).
-    """
-    out = dict(base)
+def _deep_update(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    """Recursively merge override into base (non-destructive)."""
+    out = base.copy()
     for k, v in override.items():
         if k in out and isinstance(out[k], dict) and isinstance(v, dict):
             out[k] = _deep_update(out[k], v)
@@ -57,130 +34,98 @@ def _deep_update(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, An
     return out
 
 
-def _extract_defaults_from_schema(schema: Dict[str, Any]) -> Dict[str, Any]:
-    """Walk the schema and produce a dict of defaults for top-level properties only.
+def _extract_defaults(schema: dict[str, Any]) -> Any:
+    """Recursively extract default values from the JSON schema."""
+    if "default" in schema:
+        return schema["default"]
 
-    This is intentionally conservative: it uses the `default` keys present in the
-    schema for nested objects when available. It's good enough to seed settings with
-    sensible values; the application can persist user changes afterwards.
-    """
+    if schema.get("type") == "object":
+        defaults = {}
+        for k, v in schema.get("properties", {}).items():
+            val = _extract_defaults(v)
+            if val is not None:
+                defaults[k] = val
+        return defaults if defaults else None
 
-    def pick_defaults(node: Dict[str, Any]) -> Any:
-        t = node.get("type")
-        if "default" in node:
-            return node["default"]
-        if t == "object":
-            props = node.get("properties", {})
-            return {
-                k: pick_defaults(v)
-                for k, v in props.items()
-                if "default" in v or v.get("type") == "object"
-            }
-        # no default available
-        return None
-
-    root = {}
-    props = schema.get("properties", {})
-    for name, prop in props.items():
-        val = pick_defaults(prop)
-        if val is not None:
-            root[name] = val
-    return root
+    return None
 
 
 class Settings(dict):
-    """Dict-like settings object allowing attribute access.
+    """Dict-like settings object allowing attribute access (s.key)."""
 
-    Example: `s.inference['default_confidence']` or `s.inference.default_confidence`.
-    """
-
-    def __getattr__(self, item):
+    def __getattr__(self, key: str) -> Any:
         try:
-            v = self[item]
+            val = self[key]
         except KeyError as e:
-            raise AttributeError(item) from e
-        if isinstance(v, dict) and not isinstance(v, Settings):
-            v = Settings(v)
-            self[item] = v
-        return v
+            raise AttributeError(
+                f"'{type(self).__name__}' object has no attribute '{key}'"
+            ) from e
 
-    def __setattr__(self, key, value):
-        # Allow normal attribute setting for internal names
-        if key.startswith("_"):
-            super().__setattr__(key, value)
-            return
+        # Lazy conversion of nested dicts to Settings
+        if isinstance(val, dict) and not isinstance(val, Settings):
+            val = Settings(val)
+            self[key] = val
+        return val
+
+    def __setattr__(self, key: str, value: Any) -> None:
         self[key] = value
 
-    def save(self, path: str | None = None) -> None:
-        """Save the user config to `path` or to the default user config location."""
-        p = (
-            Path(path)
-            if path
-            else Path(os.path.expanduser("~")) / ".mpcamera" / "config.json"
-        )
+    def save(self, path: str | Path | None = None) -> None:
+        """Save current settings to JSON."""
+        p = Path(path) if path else DEFAULT_USER_CONFIG
         p.parent.mkdir(parents=True, exist_ok=True)
-        # Convert Settings -> plain dict
-        to_write = json.loads(
-            json.dumps(
-                self, default=lambda o: dict(o) if isinstance(o, Settings) else o
-            )
-        )
+
         with p.open("w", encoding="utf-8") as fh:
-            json.dump(to_write, fh, indent=2, ensure_ascii=False)
+            # Settings inherits dict, so json.dump handles it nativey
+            json.dump(self, fh, indent=2, ensure_ascii=False)
 
-    @staticmethod
-    def load(path: str | None = None, schema_path: str | None = None) -> "Settings":
-        """Load settings. Merges schema defaults with user file (if present).
+    @classmethod
+    def load(
+        cls, path: str | Path | None = None, schema_path: Path | None = None
+    ) -> Settings:
+        """Load settings, merging schema defaults with user config."""
+        # 1. Load Schema & Defaults
+        s_path = schema_path or SCHEMA_PATH
+        try:
+            schema = json.loads(s_path.read_text(encoding="utf-8"))
+            defaults = _extract_defaults(schema) or {}
+        except Exception as e:
+            raise RuntimeError(f"Failed to load schema {s_path}: {e}")
 
-        - `path`: optional path to user config JSON. If omitted uses `~/.mpcamera/config.json`.
-        - `schema_path`: optional path to a JSON Schema file. Defaults to packaged `config_schema.json`.
-        """
-        schema = (
-            _load_schema()
-            if schema_path is None
-            else json.loads(Path(schema_path).read_text(encoding="utf-8"))
-        )
-
-        defaults = _extract_defaults_from_schema(schema)
-
-        # Read user config if present
-        user_path = (
-            Path(path)
-            if path
-            else Path(os.path.expanduser("~")) / ".mpcamera" / "config.json"
-        )
+        # 2. Load User Config
+        u_path = Path(path) if path else DEFAULT_USER_CONFIG
         user_conf = {}
-        if user_path.exists():
+        if u_path.exists():
             try:
-                user_conf = json.loads(user_path.read_text(encoding="utf-8"))
-            except Exception:
-                # If file is invalid JSON, ignore and continue with defaults
-                user_conf = {}
+                user_conf = json.loads(u_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                print(
+                    f"Warning: Invalid JSON in {u_path}, using defaults.",
+                    file=sys.stderr,
+                )
 
+        # 3. Merge
         merged = _deep_update(defaults, user_conf)
 
-        # Validate if jsonschema available
+        # 4. Validate (if available)
         if _HAS_JSONSCHEMA:
             try:
-                # Use Draft7Validator for compatibility with the schema shipped
                 jsonschema.validate(instance=merged, schema=schema)
-            except Exception as e:  # pragma: no cover - runtime validation
-                # Do not hard-fail; surface as warning in runtime environments
-                print(f"Config validation failed: {e}. Using merged values anyway.")
+            except jsonschema.ValidationError as e:
+                print(f"Config validation warning: {e.message}", file=sys.stderr)
 
-        # Convert nested dicts to Settings objects recursively
-        def to_settings(obj: Any) -> Any:
-            if isinstance(obj, dict):
-                return Settings({k: to_settings(v) for k, v in obj.items()})
-            return obj
-
-        return to_settings(merged)
+        return cls(merged)
 
 
-# Convenience functions
-def load_settings(path: str | None = None) -> Settings:
-    return Settings.load(path)
+def get_settings(path: str | Path | None = None) -> Settings:
+    """Get or create the global cached Settings instance."""
+    global _GLOBAL_SETTINGS
+    if _GLOBAL_SETTINGS is None:
+        _GLOBAL_SETTINGS = Settings.load(path)
+    return _GLOBAL_SETTINGS
 
 
-def save_settings(settings: Settings, path: str | None = None) -> None:
-    settings.save(path)
+def set_settings(settings: Settings) -> None:
+    """Override the global settings instance."""
+    global _GLOBAL_SETTINGS
+    _GLOBAL_SETTINGS = settings
