@@ -39,6 +39,37 @@ class ResultsWindow(QtWidgets.QMainWindow):
             QtWidgets.QAbstractItemView.SelectionMode.SingleSelection
         )
 
+        # Make the table expand to fill the window width/height
+        try:
+            self.table.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Expanding,
+                QtWidgets.QSizePolicy.Policy.Expanding,
+            )
+        except Exception:
+            pass
+
+        # Set header resize mode so columns stretch to fill available width
+        try:
+            header = self.table.horizontalHeader()
+            for i in range(self.table.columnCount()):
+                try:
+                    header.setSectionResizeMode(i, QtWidgets.QHeaderView.ResizeMode.Stretch)
+                except Exception:
+                    # Fallback: set global mode if per-section API not available
+                    try:
+                        header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Stretch)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        # Reduce outer margins so the table can use full width
+        try:
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(0)
+        except Exception:
+            pass
+
         layout.addWidget(self.table)
 
     def update_data(self, preds, last_pixmap, current_frame_np):
