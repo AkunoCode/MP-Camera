@@ -37,7 +37,7 @@ try:
 except Exception:
     FormHandler = None
 try:
-    from mpcamera.utils.results_window import ResultsWindow
+    from mpcamera.ui.results_window import ResultsWindow
 except Exception:
     ResultsWindow = None
 from mpcamera.utils.camera_utils import extract_directus_items, get_site_id_from_sample
