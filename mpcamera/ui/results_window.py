@@ -53,11 +53,15 @@ class ResultsWindow(QtWidgets.QMainWindow):
             header = self.table.horizontalHeader()
             for i in range(self.table.columnCount()):
                 try:
-                    header.setSectionResizeMode(i, QtWidgets.QHeaderView.ResizeMode.Stretch)
+                    header.setSectionResizeMode(
+                        i, QtWidgets.QHeaderView.ResizeMode.Stretch
+                    )
                 except Exception:
                     # Fallback: set global mode if per-section API not available
                     try:
-                        header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Stretch)
+                        header.setSectionResizeMode(
+                            QtWidgets.QHeaderView.ResizeMode.Stretch
+                        )
                     except Exception:
                         pass
         except Exception:
