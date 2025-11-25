@@ -11,6 +11,9 @@ from typing import Optional, List, Dict, Any
 
 from PyQt6 import QtWidgets, QtCore, QtGui
 
+# --- CAMERA DETECTION IMPORT ---
+from PyQt6.QtMultimedia import QMediaDevices
+
 # --- Safe Service Imports ---
 try:
     from mpcamera.services.roboflow import RoboflowClient
@@ -98,6 +101,8 @@ class CameraPageController(QtCore.QObject):
         self._last_pixmap: Optional[QtGui.QPixmap] = None
         self._current_frame_np: Optional[np.ndarray] = None
         self._cached_soils: List[Dict] = []
+        # Currently selected camera device index (int). Defaults to 0.
+        self._selected_camera_index: int = 0
 
         # Local Inference State
         self._local_engine = None
@@ -154,6 +159,7 @@ class CameraPageController(QtCore.QObject):
             "mag_spin": self.page.findChild(
                 QtWidgets.QDoubleSpinBox, "magnificationSpinbox"
             ),
+            "source_combo": self.page.findChild(QtWidgets.QComboBox, "sourceCombo"),
             "reload_btn": self.page.findChild(QtWidgets.QPushButton, "reloadButton"),
             "view_btn": self.page.findChild(QtWidgets.QPushButton, "viewButton"),
             # viewDetails button (replaces the inline inference table in some UI versions)
@@ -218,6 +224,9 @@ class CameraPageController(QtCore.QObject):
             ui["soil_combo"].currentIndexChanged.connect(self._on_soil_changed)
         if ui["model_combo"] is not None:
             ui["model_combo"].currentIndexChanged.connect(self._on_model_changed)
+        # Camera source combobox
+        if ui.get("source_combo") is not None:
+            ui["source_combo"].currentIndexChanged.connect(self._on_source_changed)
 
         # Buttons
         if ui["cam_btn"] is not None:
@@ -328,6 +337,12 @@ class CameraPageController(QtCore.QObject):
                 except Exception:
                     combo.setCurrentIndex(0)
             combo.blockSignals(False)
+
+        # Populate camera source combo (detect available cameras)
+        try:
+            self._populate_source_combo()
+        except Exception:
+            pass
 
     def _populate_local_models(self, combo: QtWidgets.QComboBox):
         """Scans the models directory and adds .pth files to the combobox."""
@@ -655,22 +670,48 @@ class CameraPageController(QtCore.QObject):
         self._update_ui_state()
 
     def _start_camera(self):
+        """
+        Starts the camera with robust handling for external cameras (like Sony A7C).
+        Forces CAP_DSHOW and sets resolution to 1920x1080 to avoid connection hang.
+        """
         try:
-            # Prefer DSHOW on Windows
-            self._vc = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+            idx = int(getattr(self, "_selected_camera_index", 0))
+            print(f"[CAMERA] Attempting to open camera index: {idx}")
+
+            # 1. Force DirectShow (CAP_DSHOW)
+            self._vc = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
+
             if not self._vc.isOpened():
-                self._vc = cv2.VideoCapture(0)
+                print("[CAMERA] DSHOW failed, trying default backend...")
+                self._vc = cv2.VideoCapture(idx)
 
             if self._vc.isOpened():
+                # 3. CRITICAL: Force Resolution for Sony A7C / High-Res Inputs.
+                self._vc.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
+                self._vc.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+
+                # 4. FORCE MJPG (Fixes Black Screen on Sony)
+                fourcc = cv2.VideoWriter_fourcc(*"MJPG")
+                self._vc.set(cv2.CAP_PROP_FOURCC, fourcc)
+
                 self._streaming = True
                 self._paused = False
                 self._frame_timer.start()
                 self._stream_inference_timer.start()
+                print(f"[CAMERA] Camera {idx} started successfully.")
             else:
-                print("Failed to open camera.")
+                print(f"[CAMERA] Failed to open camera index {idx}.")
+                QtWidgets.QMessageBox.warning(
+                    self.page,
+                    "Camera Error",
+                    f"Could not open Camera Index {idx}.\n\n"
+                    "If Index 0 failed, try selecting Index 1 or 2 from the dropdown.",
+                )
                 self._vc = None
+
         except Exception as e:
             print(f"Camera Start Error: {e}")
+            traceback.print_exc()
 
     def _stop_camera(self):
         self._frame_timer.stop()
@@ -721,6 +762,53 @@ class CameraPageController(QtCore.QObject):
             return
         self._paused = not self._paused
         self._update_ui_state()
+
+    def _populate_source_combo(self):
+        """
+        Populate the source combo using QMediaDevices to get actual camera names.
+        """
+        combo = self.ui.get("source_combo")
+        if combo is None:
+            return
+
+        combo.blockSignals(True)
+        combo.clear()
+
+        # Use QtMultimedia to list available video inputs
+        cameras = QMediaDevices.videoInputs()
+
+        if not cameras:
+            combo.addItem("No cameras detected", -1)
+        else:
+            for i, camera_device in enumerate(cameras):
+                description = camera_device.description()
+                combo.addItem(f"{description}", i)
+
+        # Default to the first one or maintain selection
+        combo.setCurrentIndex(0)
+        self._selected_camera_index = combo.currentData() or 0
+        combo.blockSignals(False)
+
+    def _on_source_changed(self):
+        combo = self.ui.get("source_combo")
+        if combo is None:
+            return
+
+        # Get the index stored in the UserRole/Data
+        data = combo.currentData()
+
+        try:
+            idx = int(data) if data is not None else 0
+        except Exception:
+            idx = 0
+
+        print(f"[CAMERA] User selected camera index: {idx}")
+        self._selected_camera_index = idx
+
+        # If camera is currently streaming, stop and restart to switch sources
+        if self._streaming:
+            self._stop_camera()
+            QtCore.QTimer.singleShot(200, self._start_camera)
 
     # ================= IMAGE HANDLING =================
 
