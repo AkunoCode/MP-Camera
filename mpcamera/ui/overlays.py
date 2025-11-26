@@ -521,6 +521,11 @@ def render_predictions_on_scene(scene: QtWidgets.QGraphicsScene, result):
                             pass
                 except Exception:
                     pass
+            # reset sequential overlay index so indices restart each inference
+            try:
+                setattr(scene, "_inference_overlay_seq", 0)
+            except Exception:
+                pass
         except Exception:
             grp = None
 
