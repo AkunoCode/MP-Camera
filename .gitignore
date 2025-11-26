@@ -16,3 +16,6 @@ __pycache__/
 models/
 
 prediction_debug.txt
+
+build/
+dist/
