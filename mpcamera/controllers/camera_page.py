@@ -1845,6 +1845,12 @@ class CameraPageController(QtCore.QObject):
                         "equivalent_circular_diameter_um": stats.get("deq"),
                         "skeleton_length_um": stats.get("skeleton"),
                     }
+                    # Include geometry so the save worker can crop per-particle
+                    if p.get("points"):
+                        item["points"] = p.get("points")
+                    if p.get("bbox"):
+                        item["bbox"] = p.get("bbox")
+
                     payloads.append({k: v for k, v in item.items() if v is not None})
                 except Exception:
                     continue
@@ -1893,6 +1899,28 @@ class CameraPageController(QtCore.QObject):
                 "equivalent_circular_diameter_um": get_val(7),
                 "skeleton_length_um": get_val(8),
             }
+            # Try to augment with geometry from the matching prediction in `_last_preds`.
+            try:
+                key = table.item(r, 0).data(QtCore.Qt.ItemDataRole.UserRole)
+                if key and getattr(self, "_last_preds", None):
+                    match = None
+                    for pp in getattr(self, "_last_preds", []):
+                        k = (
+                            pp.get("detection_id")
+                            or pp.get("id")
+                            or json.dumps(pp, default=str)
+                        )
+                        if str(k) == str(key):
+                            match = pp
+                            break
+                    if match:
+                        if match.get("points"):
+                            item["points"] = match.get("points")
+                        if match.get("bbox"):
+                            item["bbox"] = match.get("bbox")
+            except Exception:
+                pass
+
             payloads.append({k: v for k, v in item.items() if v is not None})
 
         self._start_save_worker(payloads)
@@ -1900,16 +1928,62 @@ class CameraPageController(QtCore.QObject):
     def _start_save_worker(self, payloads):
         """Spawns worker to upload image and records."""
 
-        # Save the image to a temp path before starting thread
+        # Prepare cropped images for each payload (if geometry available).
+        # For each payload we may add an internal `_image_path` key pointing to a
+        # temporary file containing the cropped image. If no per-payload crop is
+        # possible, fall back to saving the full image as before and pass it as
+        # `img_path` for a single upload used by all records.
         img_path = None
-        if self._last_pixmap:
-            try:
-                t = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
-                t.close()
-                self._last_pixmap.save(t.name, "JPG")
-                img_path = t.name
-            except Exception as e:
-                print(f"Error saving temp image: {e}")
+        try:
+            per_payload_images = False
+            if self._last_pixmap:
+                for p in payloads:
+                    pts = p.get("points") or []
+                    bbox = p.get("bbox") or []
+                    if not pts and not bbox:
+                        continue
+
+                    try:
+                        # Compute crop coordinates (match ResultsWindow logic)
+                        if pts:
+                            xs = [int(x) for x, _ in pts]
+                            ys = [int(y) for _, y in pts]
+                            x0, y0 = int(min(xs)), int(min(ys))
+                            x1, y1 = int(max(xs)), int(max(ys))
+                        else:
+                            x0, y0, w, h = [int(v) for v in bbox]
+                            x1, y1 = x0 + w, y0 + h
+
+                        pad = 30
+                        x0 = max(0, x0 - pad)
+                        y0 = max(0, y0 - pad)
+                        x1 = min(self._last_pixmap.width(), x1 + pad)
+                        y1 = min(self._last_pixmap.height(), y1 + pad)
+
+                        rect = QtCore.QRect(x0, y0, x1 - x0, y1 - y0)
+                        cropped = self._last_pixmap.copy(rect)
+
+                        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+                        tmp.close()
+                        # Save as PNG to avoid compression artifacts
+                        cropped.save(tmp.name, "PNG")
+                        p["_image_path"] = tmp.name
+                        per_payload_images = True
+                    except Exception:
+                        # skip crop failures for this payload
+                        continue
+
+            if not per_payload_images and self._last_pixmap:
+                try:
+                    t = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
+                    t.close()
+                    self._last_pixmap.save(t.name, "JPG")
+                    img_path = t.name
+                except Exception as e:
+                    print(f"Error saving temp image: {e}")
+        except Exception:
+            # Best-effort: continue without images if anything goes wrong
+            img_path = None
 
         def worker():
             count = 0

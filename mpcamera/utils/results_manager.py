@@ -99,8 +99,34 @@ class ResultsManager:
         count = 0
         img_id = None
 
-        # 1. Upload Image
-        if img_path and os.path.exists(img_path):
+        # 1. Upload Image(s)
+        # If individual payloads include an internal key `_image_path`, upload
+        # each of those and attach the returned file id to that payload. Otherwise
+        # fall back to uploading the provided `img_path` once and assigning it to
+        # all payloads (backwards compatibility).
+        if payloads:
+            # Per-payload uploads
+            for p in payloads:
+                local_path = p.get("_image_path")
+                if local_path and os.path.exists(local_path):
+                    try:
+                        resp = client.upload_file(local_path)
+                        if isinstance(resp, dict) and "data" in resp:
+                            p["image"] = resp["data"].get("id")
+                    except Exception as e:
+                        print(f"Image upload failed for {local_path}: {e}")
+                    finally:
+                        try:
+                            os.remove(local_path)
+                        except Exception:
+                            pass
+
+        # If no per-payload images were uploaded, try the global img_path
+        if (
+            (not any(p.get("image") for p in payloads))
+            and img_path
+            and os.path.exists(img_path)
+        ):
             try:
                 resp = client.upload_file(img_path)
                 if isinstance(resp, dict) and "data" in resp:
