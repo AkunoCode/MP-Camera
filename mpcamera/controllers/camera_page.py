@@ -1623,7 +1623,9 @@ class CameraPageController(QtCore.QObject):
                 # are received back here and can be saved to Directus.
                 try:
                     # Avoid multiple connections
-                    if hasattr(win, "data_committed") and not getattr(win, "_committed_connected", False):
+                    if hasattr(win, "data_committed") and not getattr(
+                        win, "_committed_connected", False
+                    ):
                         win.data_committed.connect(self._on_results_committed)
                         win._committed_connected = True
                 except Exception:
@@ -1687,7 +1689,7 @@ class CameraPageController(QtCore.QObject):
                 pass
         except Exception as e:
             print(f"Failed opening large results window: {e}")
- 
+
     def _on_results_committed(self, records: List[Dict[str, Any]]):
         """Handle data emitted from the ResultsWindow Save action.
 
