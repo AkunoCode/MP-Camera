@@ -13,42 +13,165 @@
   <property name="windowTitle">
    <string>Inference Results &amp; Verification</string>
   </property>
+  <property name="styleSheet">
+   <string notr="true">QWidget {
+    font-family: &quot;Inter&quot;;
+    font-size: 12pt;
+}
+
+QPushButton {
+    background-color: black;
+    color: white;
+    border-radius: 5px;
+	font-weight:bold;
+}
+
+QPushButton[designClass=&quot;lightButton&quot;] {
+    background-color: white;
+    color: black;
+    border-radius: 5px;
+border: 1px solid black;
+font-weight:bold;
+}
+
+QFrame[designClass=&quot;inferenceCard&quot;]{
+background-color:white;
+border-radius:5px;
+border: 1px solid rgb(134, 134, 134);
+}
+
+/* Visually indicate disabled buttons (override default dark theme styles) */
+QPushButton:disabled {
+    background-color: #dcdcdc;
+    color: #7a7a7a;
+    border: 1px solid #c0c0c0;
+}
+
+QPushButton[designClass=&quot;lightButton&quot;]:disabled {
+    background-color: #f5f5f5;
+    color: #9a9a9a;
+    border: 1px solid #d0d0d0;
+}
+
+
+/*-----------------SPIN BOX-------------------------------*/
+QDoubleSpinBox {
+    background-color: #ffffff;
+    border: 1px solid #d0d0d0;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 13px;
+    color: #333333;
+}
+
+QDoubleSpinBox:hover {
+    border: 1px solid #a0a0a0;
+}
+
+QDoubleSpinBox:focus {
+    border: 1px solid #0078d4;
+}
+
+/* Remove the ugly default arrows styling */
+QDoubleSpinBox::up-button, 
+QDoubleSpinBox::down-button {
+    background: transparent;
+    border: none;
+    width: 20px;
+}
+
+/* Modern minimal up/down arrows */
+QDoubleSpinBox::up-arrow {
+    image: url(:/qt-project.org/styles/commonstyle/images/arrow-up-16.png);
+    width: 10px;
+    height: 10px;
+}
+
+QDoubleSpinBox::down-arrow {
+    image: url(:/qt-project.org/styles/commonstyle/images/arrow-down-16.png);
+    width: 10px;
+    height: 10px;
+}
+
+/* Dropdown-style popup for editing (if applicable) */
+QDoubleSpinBox QAbstractItemView {
+    background-color: #ffffff;
+    border: 1px solid #cfcfcf;
+    border-radius: 6px;
+    padding: 4px;
+    selection-background-color: #e6f2ff;
+}
+
+/*-----------------LINE EDIT----------------------------*/
+
+QLineEdit {
+    background-color: #ffffff;
+    border: 1px solid #d0d0d0;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 13px;
+    color: #333333;
+    selection-background-color: #cce4ff;  /* light blue text highlight */
+}
+
+QLineEdit:hover {
+    border: 1px solid #a0a0a0;
+}
+
+QLineEdit:focus {
+    border: 1px solid #0078d4; /* same focus blue as combobox */
+    outline: none;
+}
+</string>
+  </property>
   <widget class="QWidget" name="centralwidget">
    <layout class="QVBoxLayout" name="verticalLayout_main">
+    <property name="spacing">
+     <number>6</number>
+    </property>
+    <property name="leftMargin">
+     <number>12</number>
+    </property>
+    <property name="topMargin">
+     <number>12</number>
+    </property>
+    <property name="rightMargin">
+     <number>12</number>
+    </property>
+    <property name="bottomMargin">
+     <number>12</number>
+    </property>
     <item>
      <widget class="QSplitter" name="splitter">
       <property name="orientation">
        <enum>Qt::Horizontal</enum>
       </property>
-      
       <widget class="QGroupBox" name="groupImage">
        <property name="title">
-        <string>Segmentation Mask</string>
+        <string>Particle Preview</string>
        </property>
        <layout class="QVBoxLayout" name="verticalLayout_preview">
         <item>
-         <widget class="QGraphicsView" name="previewView">
-         </widget>
+         <widget class="QGraphicsView" name="previewView"/>
         </item>
         <item>
          <widget class="QLabel" name="label_instructions">
+          <property name="styleSheet">
+           <string>color: gray; font-size: 10px;</string>
+          </property>
           <property name="text">
            <string>Scroll to zoom • Drag to pan</string>
           </property>
           <property name="alignment">
            <set>Qt::AlignCenter</set>
           </property>
-          <property name="styleSheet">
-           <string>color: gray; font-size: 10px;</string>
-          </property>
          </widget>
         </item>
        </layout>
       </widget>
-
       <widget class="QGroupBox" name="groupData">
        <property name="title">
-        <string>Morphometric Data</string>
+        <string>Morphological and Colorimetric Characteristics</string>
        </property>
        <layout class="QVBoxLayout" name="verticalLayout_table">
         <item>
@@ -56,16 +179,15 @@
           <property name="alternatingRowColors">
            <bool>true</bool>
           </property>
-          <property name="selectionBehavior">
-           <enum>QAbstractItemView::SelectRows</enum>
-          </property>
           <property name="selectionMode">
            <enum>QAbstractItemView::SingleSelection</enum>
+          </property>
+          <property name="selectionBehavior">
+           <enum>QAbstractItemView::SelectRows</enum>
           </property>
           <attribute name="verticalHeaderVisible">
            <bool>false</bool>
           </attribute>
-          
           <column>
            <property name="text">
             <string>ID</string>
@@ -112,7 +234,6 @@
       </widget>
      </widget>
     </item>
-
     <item>
      <layout class="QHBoxLayout" name="horizontalLayout_actions">
       <item>
@@ -137,33 +258,46 @@
       </item>
       <item>
        <widget class="QPushButton" name="btnDelete">
+        <property name="minimumSize">
+         <size>
+          <width>200</width>
+          <height>40</height>
+         </size>
+        </property>
         <property name="text">
          <string>Delete Selected Row</string>
         </property>
-        <property name="styleSheet">
-         <string>background-color: #ffcccc; color: #cc0000; border: 1px solid #cc0000; padding: 5px;</string>
+        <property name="designClass" stdset="0">
+         <string>lightButton</string>
         </property>
        </widget>
       </item>
-    <item>
-     <widget class="QPushButton" name="btnSave">
-      <property name="text">
-       <string>Save</string>
-      </property>
-      <property name="toolTip">
-       <string>Save verified results (send to Directus)</string>
-      </property>
-      <property name="styleSheet">
-       <string>background-color: #ccffcc; color: #006600; border: 1px solid #006600; padding: 5px; font-weight: bold;</string>
-      </property>
-     </widget>
-    </item>
+      <item>
+       <widget class="QPushButton" name="btnSave">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>200</width>
+          <height>40</height>
+         </size>
+        </property>
+        <property name="toolTip">
+         <string>Save verified results (send to Directus)</string>
+        </property>
+        <property name="text">
+         <string>Save</string>
+        </property>
+       </widget>
+      </item>
      </layout>
     </item>
    </layout>
   </widget>
-  <widget class="QMenuBar" name="menubar"/>
-  <widget class="QStatusBar" name="statusbar"/>
  </widget>
  <resources/>
  <connections/>
