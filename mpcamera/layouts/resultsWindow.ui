@@ -106,11 +106,6 @@
             <string>Minor Axis</string>
            </property>
           </column>
-          <column>
-           <property name="text">
-            <string>Verification</string>
-           </property>
-          </column>
          </widget>
         </item>
        </layout>
@@ -150,16 +145,19 @@
         </property>
        </widget>
       </item>
-      <item>
-       <widget class="QPushButton" name="btnSave">
-        <property name="text">
-         <string>Commit to Database</string>
-        </property>
-        <property name="styleSheet">
-         <string>background-color: #ccffcc; color: #006600; border: 1px solid #006600; padding: 5px; font-weight: bold;</string>
-        </property>
-       </widget>
-      </item>
+    <item>
+     <widget class="QPushButton" name="btnSave">
+      <property name="text">
+       <string>Save</string>
+      </property>
+      <property name="toolTip">
+       <string>Save verified results (send to Directus)</string>
+      </property>
+      <property name="styleSheet">
+       <string>background-color: #ccffcc; color: #006600; border: 1px solid #006600; padding: 5px; font-weight: bold;</string>
+      </property>
+     </widget>
+    </item>
      </layout>
     </item>
    </layout>

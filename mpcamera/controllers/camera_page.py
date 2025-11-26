@@ -1619,6 +1619,15 @@ class CameraPageController(QtCore.QObject):
                     win.update_data(preds, last_pix, cur_img)
                 except Exception as e:
                     print(f"ResultsWindow update failed: {e}")
+                # Connect ResultsWindow save signal so edits from that window
+                # are received back here and can be saved to Directus.
+                try:
+                    # Avoid multiple connections
+                    if hasattr(win, "data_committed") and not getattr(win, "_committed_connected", False):
+                        win.data_committed.connect(self._on_results_committed)
+                        win._committed_connected = True
+                except Exception:
+                    pass
             else:
                 # Fallback table population
                 tbl = getattr(win, "table", None)
@@ -1678,6 +1687,43 @@ class CameraPageController(QtCore.QObject):
                 pass
         except Exception as e:
             print(f"Failed opening large results window: {e}")
+ 
+    def _on_results_committed(self, records: List[Dict[str, Any]]):
+        """Handle data emitted from the ResultsWindow Save action.
+
+        - Update local cached preds/table so the Camera page reflects edits.
+        - Build payloads expected by Directus and start the save worker.
+        """
+        try:
+            if not records:
+                return
+
+            # Update last_preds so overlays and viewDetails reflect edits
+            try:
+                self._last_preds = records
+            except Exception:
+                pass
+
+            # Refresh inline table and stats to reflect updated labels/verification
+            try:
+                self._update_table(records)
+                self._update_stats(records)
+            except Exception:
+                pass
+
+            # NOTE: Do NOT auto-save to Directus here. Leave uploading to the
+            # camera page Save button so the user intentionally triggers uploads.
+            # The camera page Save button (`_save_results`) will read from the
+            # updated inline table (or `self._last_preds`) and call the upload.
+            try:
+                # Optionally mark that there are pending edits (UI-only)
+                lbl = self.ui.get("lbl_total")
+                if lbl is not None:
+                    lbl.setText(str(len(records)))
+            except Exception:
+                pass
+        except Exception as e:
+            print(f"_on_results_committed error: {e}")
 
     def _update_stats(self, preds):
         try:

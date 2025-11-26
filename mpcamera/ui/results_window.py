@@ -119,8 +119,8 @@ class ResultsWindow(QtWidgets.QMainWindow):
 
         # --- 4. Setup Table Columns ---
         if self.table:
-            # We need 11 columns total now:
-            # 0:ID, 1:Class, 2:Conf, 3:Color, 4:Area, 5:Perim, 6:Major, 7:Minor, 8:Deq, 9:Skel, 10:Verify
+            # We need 10 columns total now:
+            # 0:ID, 1:Class, 2:Conf, 3:Color, 4:Area, 5:Perim, 6:Major, 7:Minor, 8:Deq, 9:Skel
             desired_headers = [
                 "ID",
                 "Class",
@@ -132,7 +132,6 @@ class ResultsWindow(QtWidgets.QMainWindow):
                 "Minor",
                 "Deq",
                 "Skeleton",
-                "Verification",
             ]
 
             # If XML has fewer columns, expand it automatically
@@ -243,16 +242,8 @@ class ResultsWindow(QtWidgets.QMainWindow):
                 )
                 self.table.setItem(i, 4 + col_offset, item)
 
-            # Col 10: Verification Status (Scientific Term)
-            status_item = QtWidgets.QTableWidgetItem("Model Prediction")
-            # Set color to a neutral/alert color (e.g., Orange/Grey) to imply "Pending Review"
-            status_item.setForeground(
-                QtGui.QBrush(QtGui.QColor("#E67E22"))
-            )  # Muted Orange
-            status_item.setFlags(
-                QtCore.Qt.ItemFlag.ItemIsEnabled | QtCore.Qt.ItemFlag.ItemIsSelectable
-            )  # Read-only
-            self.table.setItem(i, 10, status_item)
+            # Note: Verification column removed — verification status is kept
+            # in the internal `_cached_morphometrics` but not shown as a table column.
 
         self.table.setSortingEnabled(True)
 
@@ -261,20 +252,19 @@ class ResultsWindow(QtWidgets.QMainWindow):
         Triggered when the user changes a value in the dropdown.
         Updates the internal cache and visual status.
         """
-        # 1. Update Visual Status
-        status_item = self.table.item(row, 10)
-        if status_item:
-            status_item.setText("Human Verified")
-            status_item.setForeground(QtGui.QBrush(QtGui.QColor("green")))
-            # Make it bold to emphasize human intervention
-            font = status_item.font()
-            font.setBold(True)
-            status_item.setFont(font)
-
-        # 2. Update Internal Data Cache
+        # Update Internal Data Cache (and keep verification flag)
         if 0 <= row < len(self._cached_morphometrics):
             self._cached_morphometrics[row]["label"] = new_text
             self._cached_morphometrics[row]["verification"] = "human_verified"
+
+            # Optionally, visually mark the row (background) to indicate user edit
+            try:
+                for c in range(self.table.columnCount()):
+                    it = self.table.item(row, c)
+                    if it is not None:
+                        it.setBackground(QtGui.QBrush(QtGui.QColor("#f0fff0")))
+            except Exception:
+                pass
 
     def delete_selected_row(self):
         """
@@ -302,9 +292,65 @@ class ResultsWindow(QtWidgets.QMainWindow):
         """
         Sends the verified data to the main application/Directus.
         """
-        print(f"Commiting {len(self._cached_morphometrics)} records...")
+        # Ensure any edits made directly in the table are reflected in the cached records
+        try:
+            self._sync_table_to_cache()
+        except Exception:
+            pass
+
+        print(f"Updating {len(self._cached_morphometrics)} records...")
         self.data_committed.emit(self._cached_morphometrics)
         self.close()
+
+    def _sync_table_to_cache(self):
+        """Read current table widgets/items and update the internal `_cached_morphometrics`.
+
+        This ensures any user edits in the table (dropdowns, numeric edits) are captured
+        before sending data to Directus.
+        """
+        if not self.table or not self._cached_morphometrics:
+            return
+
+        row_count = self.table.rowCount()
+        for r in range(min(row_count, len(self._cached_morphometrics))):
+            rec = self._cached_morphometrics[r]
+
+            # Class: cell widget combo
+            try:
+                widget = self.table.cellWidget(r, 1)
+                if isinstance(widget, QtWidgets.QComboBox):
+                    rec["label"] = widget.currentText()
+            except Exception:
+                pass
+
+            # Confidence
+            try:
+                item = self.table.item(r, 2)
+                if item is not None:
+                    rec["score"] = float(item.text())
+            except Exception:
+                pass
+
+            # Color
+            try:
+                item = self.table.item(r, 3)
+                if item is not None:
+                    rec["color_name"] = item.text()
+            except Exception:
+                pass
+
+            # Morphometrics: cols 4-9
+            metrics = ["area", "perimeter", "major", "minor", "deq", "skeleton"]
+            for i, key in enumerate(metrics):
+                try:
+                    item = self.table.item(r, 4 + i)
+                    if item is not None:
+                        rec[key] = float(item.text())
+                except Exception:
+                    pass
+
+            # Verification remains in the internal cache but is not a table column
+            # (we preserve any existing value)
 
     def _on_selection_changed(self):
         """
