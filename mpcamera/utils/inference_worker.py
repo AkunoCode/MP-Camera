@@ -64,8 +64,8 @@ class InferenceWorker(QObject):
                     path_to_infer = t.name
                     temp_path = t.name  # Mark for deletion
 
-                # 2. Determine Model Type
-                is_local = str(model_data).endswith(".pth")
+                # 2. Determine Model Type (support both .pth and .pt local weight files)
+                is_local = str(model_data).lower().endswith((".pth", ".pt"))
                 result = None
 
                 if is_local:

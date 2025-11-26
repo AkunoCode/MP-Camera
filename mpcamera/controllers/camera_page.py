@@ -481,23 +481,25 @@ class CameraPageController(QtCore.QObject):
             pass
 
     def _populate_local_models(self, combo: QtWidgets.QComboBox):
-        """Scans the models directory and adds .pth files to the combobox."""
+        """Scans the models directory and adds local model files (.pth and .pt) to the combobox."""
         if not os.path.exists(self.LOCAL_MODELS_DIR):
             print(f"[CAMERA PAGE] Models directory not found: {self.LOCAL_MODELS_DIR}")
             return
-
+        # Include both .pth (PyTorch) and .pt (Ultralytics / other) weights
         pth_files = glob.glob(os.path.join(self.LOCAL_MODELS_DIR, "*.pth"))
-        if not pth_files:
-            print(f"[CAMERA PAGE] No .pth files found in {self.LOCAL_MODELS_DIR}")
+        pt_files = glob.glob(os.path.join(self.LOCAL_MODELS_DIR, "*.pt"))
+        model_files = sorted(list(set(pth_files + pt_files)))
+        if not model_files:
+            print(f"[CAMERA PAGE] No .pt/.pth files found in {self.LOCAL_MODELS_DIR}")
             return
 
-        print(f"[CAMERA PAGE] Found {len(pth_files)} local models.")
+        print(f"[CAMERA PAGE] Found {len(model_files)} local models.")
         combo.insertSeparator(combo.count())
 
-        for pth in pth_files:
-            filename = os.path.basename(pth)
+        for p in model_files:
+            filename = os.path.basename(p)
             # Display name matches filename, Data is the full path
-            combo.addItem(f"Local: {filename}", pth)
+            combo.addItem(f"Local: {filename}", p)
 
     def _replace_graphics_view(self):
         """Swap standard QGraphicsView with ZoomableGraphicsView at runtime."""
@@ -845,7 +847,7 @@ class CameraPageController(QtCore.QObject):
         data = self.ui["model_combo"].itemData(idx)
 
         # Check if it is a local file path
-        if isinstance(data, str) and data.endswith(".pth"):
+        if isinstance(data, str) and data.lower().endswith((".pth", ".pt")):
             print(f"[CAMERA PAGE] Selected local model: {data}")
             # If we switch models, we might want to reset the engine so it reloads
             if self._current_local_model_path != data:
@@ -1351,9 +1353,9 @@ class CameraPageController(QtCore.QObject):
         def worker():
             result = None
             try:
-                is_local = isinstance(model_data, str) and str(model_data).endswith(
-                    ".pth"
-                )
+                is_local = isinstance(model_data, str) and str(
+                    model_data
+                ).lower().endswith((".pth", ".pt"))
                 if is_local:
                     if LocalModelInference is None:
                         raise ImportError("LocalModelInference class not available.")
