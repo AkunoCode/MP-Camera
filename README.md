@@ -36,6 +36,42 @@ pip install -r requirements.txt
 python main.py
 ```
 
+## Roboflow Inference (Cloud) Setup
+
+If you want to use Roboflow-hosted workflows/models, install dependencies first, then set your Roboflow credentials before starting the app.
+
+PowerShell example:
+
+```powershell
+python -m venv .venv311
+.\.venv311\Scripts\Activate.ps1
+pip install -r requirements.txt
+
+# Required for cloud/private workflows
+$env:ROBOFLOW_API_KEY = "<YOUR_ROBOFLOW_API_KEY>"
+$env:ROBOFLOW_WORKSPACE = "<YOUR_WORKSPACE>"
+$env:ROBOFLOW_WORKFLOW = "<YOUR_WORKFLOW_ID>"
+
+# Set this when using Roboflow hosted/serverless inference endpoint
+# (leave unset for local inference server on http://localhost:9001)
+$env:ROBOFLOW_API_URL = "<YOUR_ROBOFLOW_INFERENCE_API_URL>"
+
+python main.py
+```
+
+Quick connectivity check (optional):
+
+```powershell
+python -c "from inference_sdk import InferenceHTTPClient; import os; client = InferenceHTTPClient(api_url=os.getenv('ROBOFLOW_API_URL','http://localhost:9001'), api_key=os.getenv('ROBOFLOW_API_KEY','')); print('Roboflow client ready:', type(client).__name__)"
+```
+
+If you also want to run a local Roboflow Inference server for development, install and run:
+
+```powershell
+pip install inference-cli
+inference server start --dev
+```
+
 Running the app will open the Qt GUI. The main entry point is `main.py` and navigation is handled by `ui_nav.py`.
 
 ## Usage / UI Overview
