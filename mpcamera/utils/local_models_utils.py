@@ -9,6 +9,7 @@ import json
 import datetime
 import uuid
 import warnings
+from pathlib import Path
 
 # Suppress the torch load warning for cleaner logs
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -55,7 +56,7 @@ class LocalModelInference:
         """
         Initializes the model by automatically detecting architecture (MaskRCNN, YOLOv11, RF-DETR-SEG).
         """
-        self.model_path = model_path
+        self.model_path = self._resolve_model_path(model_path)
         self.num_classes = num_classes
 
         try:
@@ -84,7 +85,7 @@ class LocalModelInference:
         self.iou_threshold = iou_threshold
         self.device = device
 
-        print(f"[INFO] Loading {os.path.basename(model_path)} on {self.device}...")
+        print(f"[INFO] Loading {os.path.basename(self.model_path)} on {self.device}...")
 
         # 1. Load Checkpoint for inspection (load on CPU to save VRAM)
         try:
@@ -106,25 +107,72 @@ class LocalModelInference:
             self.model.to(self.device)
             self.model.eval()
 
+    def _resolve_model_path(self, model_path):
+        """Resolve model paths robustly across different working directories."""
+        raw_path = Path(str(model_path))
+        candidates = []
+
+        if raw_path.is_absolute():
+            candidates.append(raw_path)
+        else:
+            cwd = Path.cwd()
+            project_root = Path(__file__).resolve().parents[2]
+            candidates.extend(
+                [
+                    (cwd / raw_path).resolve(),
+                    (project_root / raw_path).resolve(),
+                    (project_root / "models" / raw_path.name).resolve(),
+                    (project_root / "mpcamera" / "models" / raw_path.name).resolve(),
+                ]
+            )
+
+        for candidate in candidates:
+            if candidate.exists() and candidate.is_file():
+                return str(candidate)
+
+        raise FileNotFoundError(
+            f"Model file not found: '{model_path}'. Checked: "
+            + ", ".join(str(c) for c in candidates)
+        )
+
     def _determine_model_type(self):
         """
         Determines the model type, prioritizing RF-DETR-SEG based on name
         to avoid misidentification as YOLO.
         """
         model_path_lower = self.model_path.lower()
-
-        # Heuristic 1: RF-DETR-SEG detection (PRIORITY CHECK)
-        if (
+        looks_like_rfdetr = (
             "detr" in model_path_lower
             or "rf" in model_path_lower
             or "seg" in model_path_lower
-        ) and _RFDETR_SEG_AVAILABLE:
+        )
+
+        # Heuristic 1: RF-DETR-SEG detection (PRIORITY CHECK)
+        if looks_like_rfdetr and _RFDETR_SEG_AVAILABLE:
             print(" -> Detected Model Type: RF-DETR-SEG")
             return "RF-DETR-SEG"
 
+        # If filename strongly indicates RF-DETR-SEG but dependency is missing,
+        # fail fast with an actionable message instead of trying MaskRCNN fallback.
+        if looks_like_rfdetr and not _RFDETR_SEG_AVAILABLE:
+            raise RuntimeError(
+                "RF-DETR-SEG model detected from filename, but required dependencies are missing. "
+                "Install `rfdetr`, `supervision`, and `Pillow`, then restart the app."
+            )
+
         # Heuristic 2: YOLOv11 detection.
-        if model_path_lower.endswith((".pt", ".pth")) and _YOLOV11_AVAILABLE:
-            # Check the dictionary structure, if not already identified as RF-DETR
+        # Treat `.pt` as YOLO by default (unless already matched as RF-DETR).
+        if model_path_lower.endswith(".pt"):
+            if not _YOLOV11_AVAILABLE:
+                raise RuntimeError(
+                    "Detected a .pt model, but YOLO dependencies are missing. "
+                    "Install `ultralytics` and `supervision`, then restart the app."
+                )
+            print(" -> Detected Model Type: YOLOv11 (Ultralytics)")
+            return "YOLOv11"
+
+        # For `.pth`, keep compatibility with either YOLO-exported or MaskRCNN checkpoints.
+        if model_path_lower.endswith(".pth") and _YOLOV11_AVAILABLE:
             if isinstance(self.checkpoint, dict) and (
                 "model" in self.checkpoint or "names" in self.checkpoint
             ):
@@ -354,23 +402,53 @@ class LocalModelInference:
         # 1. Inference: Use the high-level predict method
         results = self.model.predict(img_pil, threshold=conf_thresh)
 
-        # Convert prediction results to supervision.Detections
+        # Convert prediction results to supervision.Detections when possible.
         detections = results
         if not isinstance(detections, sv.Detections):
+            converted = None
+            candidates = [results]
             try:
-                detections = sv.Detections.from_inference(results)
-            except:
+                if hasattr(results, "predictions"):
+                    candidates.append(getattr(results, "predictions"))
+            except Exception:
+                pass
+            try:
+                if isinstance(results, dict):
+                    for k in ("predictions", "outputs", "results", "data"):
+                        if k in results:
+                            candidates.append(results.get(k))
+            except Exception:
                 pass
 
-        if detections.mask is None:
+            for cand in candidates:
+                if cand is None:
+                    continue
+                try:
+                    converted = sv.Detections.from_inference(cand)
+                    break
+                except Exception:
+                    continue
+
+            if converted is not None:
+                detections = converted
+
+        if not isinstance(detections, sv.Detections):
+            raise RuntimeError(
+                f"RF-DETR-SEG prediction returned unsupported result type: {type(results).__name__}"
+            )
+
+        masks = getattr(detections, "mask", None)
+        xyxy = getattr(detections, "xyxy", None)
+        confs = getattr(detections, "confidence", None)
+        class_ids = getattr(detections, "class_id", None)
+
+        if masks is None or xyxy is None or confs is None or class_ids is None:
             print("[WARNING] RF-DETR-SEG model did not return segmentation masks.")
             return []
 
         # 2. Extract and Format Results
         formatted_predictions = []
-        for bbox_xyxy, mask_np, confidence, class_id in zip(
-            detections.xyxy, detections.mask, detections.confidence, detections.class_id
-        ):
+        for bbox_xyxy, mask_np, confidence, class_id in zip(xyxy, masks, confs, class_ids):
             pred_obj = self._format_prediction(
                 bbox_xyxy=bbox_xyxy,
                 score=confidence,

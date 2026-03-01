@@ -16,7 +16,10 @@ try:
 except ImportError:
     LocalModelInference = None
 
-from mpcamera.utils.inference_utils import parse_result_to_preds
+from mpcamera.utils.inference_utils import (
+    parse_result_to_preds,
+    apply_confidence_iou_filters,
+)
 
 
 class InferenceWorker(QObject):
@@ -106,7 +109,15 @@ class InferenceWorker(QObject):
                     except TypeError:
                         result = client.run_workflow(path_to_infer)
 
-                # 3. Parse Results
+                # 3. Enforce slider thresholds uniformly across backends.
+                if result is not None:
+                    result = apply_confidence_iou_filters(
+                        result,
+                        confidence_threshold=conf,
+                        iou_threshold=iou,
+                    )
+
+                # 4. Parse Results
                 preds = parse_result_to_preds(result) or []
 
                 # Emit results

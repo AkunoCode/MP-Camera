@@ -6,6 +6,7 @@ import tempfile
 import traceback
 import threading
 import numpy as np
+from pathlib import Path
 from threading import Thread
 from typing import Optional, List, Dict, Any
 
@@ -44,7 +45,11 @@ except Exception:
 from mpcamera.utils.camera_utils import extract_directus_items, get_site_id_from_sample
 from mpcamera.utils.prediction_utils import extract_points_from_prediction
 from mpcamera.ui.overlays import ensure_overlay_for_view, render_predictions_on_scene
-from mpcamera.utils.inference_utils import parse_result_to_preds, compute_aggregates
+from mpcamera.utils.inference_utils import (
+    parse_result_to_preds,
+    compute_aggregates,
+    apply_confidence_iou_filters,
+)
 from mpcamera.utils.um_per_pixel import calculate_micrometers_per_pixel
 from mpcamera.utils.color_utils import get_color_name
 from mpcamera.utils.morphometrics import (
@@ -91,7 +96,7 @@ class CameraPageController(QtCore.QObject):
     ALT_MODEL = ("RF-DETR-SEG (Cloud)", "detect-count-and-visualize")
 
     # Local Model Configuration
-    LOCAL_MODELS_DIR = os.path.join(os.getcwd(), "mpcamera", "models")
+    LOCAL_MODELS_DIR = os.path.join(os.getcwd(), "models")
     LOCAL_NUM_CLASSES = 6
     CLASS_MAP = {
         0: "Background",
@@ -119,6 +124,7 @@ class CameraPageController(QtCore.QObject):
         self._cached_soils: List[Dict] = []
         # Currently selected camera device index (int). Defaults to 0.
         self._selected_camera_index: int = 0
+        self._prefer_local_model: bool = False
 
         # Local Inference State
         self._local_engine = None
@@ -173,9 +179,17 @@ class CameraPageController(QtCore.QObject):
             except Exception:
                 pass
             try:
-                self.LOCAL_MODELS_DIR = str(cfg.models.local_models_dir)
+                self.LOCAL_MODELS_DIR = self._resolve_local_models_dir(
+                    str(cfg.models.local_models_dir)
+                )
             except Exception:
-                pass
+                self.LOCAL_MODELS_DIR = self._resolve_local_models_dir(
+                    self.LOCAL_MODELS_DIR
+                )
+            try:
+                self._prefer_local_model = bool(cfg.models.prefer_local)
+            except Exception:
+                self._prefer_local_model = False
 
             # Brightness / contrast defaults
             try:
@@ -192,6 +206,7 @@ class CameraPageController(QtCore.QObject):
             # no settings available; keep class defaults
             self._brightness_default = 50
             self._contrast_default = 50
+            self.LOCAL_MODELS_DIR = self._resolve_local_models_dir(self.LOCAL_MODELS_DIR)
 
         # --- Init Sequence ---
         self.ui = self._find_ui_elements()
@@ -236,6 +251,59 @@ class CameraPageController(QtCore.QObject):
             except Exception:
                 pass
             main_window.dataLoaded.connect(self._populate_data)
+
+    def _resolve_local_models_dir(self, configured_dir: Optional[str]) -> str:
+        """Resolve the local models directory with safe fallbacks.
+
+        Priority:
+        1) Configured path (absolute)
+        2) Configured path relative to project root
+        3) Configured path relative to current working directory
+        4) Project root /models
+        5) Project root /mpcamera/models (legacy)
+        """
+        try:
+            project_root = Path(__file__).resolve().parents[2]
+        except Exception:
+            project_root = Path.cwd()
+
+        candidates: List[Path] = []
+        if configured_dir:
+            try:
+                cfg_path = Path(str(configured_dir)).expanduser()
+                if cfg_path.is_absolute():
+                    candidates.append(cfg_path)
+                else:
+                    candidates.append(project_root / cfg_path)
+                    candidates.append(Path.cwd() / cfg_path)
+            except Exception:
+                pass
+
+        candidates.append(project_root / "models")
+        candidates.append(project_root / "mpcamera" / "models")
+
+        seen = set()
+        for candidate in candidates:
+            try:
+                norm = str(candidate.resolve())
+            except Exception:
+                norm = str(candidate)
+            if norm in seen:
+                continue
+            seen.add(norm)
+            if os.path.isdir(norm):
+                return norm
+
+        # No existing dir yet: return best intended target for future files
+        if configured_dir:
+            try:
+                cfg_path = Path(str(configured_dir)).expanduser()
+                if cfg_path.is_absolute():
+                    return str(cfg_path)
+                return str((project_root / cfg_path).resolve())
+            except Exception:
+                pass
+        return str((project_root / "models").resolve())
 
     def _find_ui_elements(self) -> Dict[str, Any]:
         """Locate and cache UI widgets. Returns a dict to avoid attribute clutter."""
@@ -446,8 +514,21 @@ class CameraPageController(QtCore.QObject):
             # 2. Add Local Models
             self._populate_local_models(combo)
 
+            selected_local = False
+            if self._prefer_local_model:
+                try:
+                    for i in range(combo.count()):
+                        data = combo.itemData(i)
+                        if isinstance(data, str) and data.lower().endswith((".pth", ".pt")):
+                            combo.setCurrentIndex(i)
+                            selected_local = True
+                            self._current_local_model_path = data
+                            break
+                except Exception:
+                    selected_local = False
+
             # Sync with current Roboflow default if available
-            if RoboflowClient:
+            if RoboflowClient and not selected_local:
                 try:
                     current_wf = RoboflowClient.get_default().workflow
                     idx = combo.findData(current_wf)
@@ -484,6 +565,17 @@ class CameraPageController(QtCore.QObject):
         """Scans the models directory and adds local model files (.pth and .pt) to the combobox."""
         if not os.path.exists(self.LOCAL_MODELS_DIR):
             print(f"[CAMERA PAGE] Models directory not found: {self.LOCAL_MODELS_DIR}")
+            hint_text = "Local: No models folder found"
+            combo.insertSeparator(combo.count())
+            combo.addItem(hint_text, None)
+            try:
+                idx = combo.findText(hint_text)
+                if idx >= 0 and combo.model() is not None:
+                    item = combo.model().item(idx)
+                    if item is not None:
+                        item.setEnabled(False)
+            except Exception:
+                pass
             return
         # Include both .pth (PyTorch) and .pt (Ultralytics / other) weights
         pth_files = glob.glob(os.path.join(self.LOCAL_MODELS_DIR, "*.pth"))
@@ -491,6 +583,17 @@ class CameraPageController(QtCore.QObject):
         model_files = sorted(list(set(pth_files + pt_files)))
         if not model_files:
             print(f"[CAMERA PAGE] No .pt/.pth files found in {self.LOCAL_MODELS_DIR}")
+            hint_text = "Local: No .pt/.pth files found"
+            combo.insertSeparator(combo.count())
+            combo.addItem(hint_text, None)
+            try:
+                idx = combo.findText(hint_text)
+                if idx >= 0 and combo.model() is not None:
+                    item = combo.model().item(idx)
+                    if item is not None:
+                        item.setEnabled(False)
+            except Exception:
+                pass
             return
 
         print(f"[CAMERA PAGE] Found {len(model_files)} local models.")
@@ -1384,6 +1487,13 @@ class CameraPageController(QtCore.QObject):
                         )
                     except TypeError:
                         result = client.run_workflow(path)
+
+                if result is not None:
+                    result = apply_confidence_iou_filters(
+                        result,
+                        confidence_threshold=conf_val,
+                        iou_threshold=iou_val,
+                    )
 
             except Exception as e:
                 print(f"Inference Error: {e}")

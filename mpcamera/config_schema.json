@@ -66,7 +66,7 @@
           "additionalProperties": false
         },
         "prefer_local": { "type": "boolean", "default": false, "description": "If true, prefer local .pth models when available." },
-        "local_models_dir": { "type": "string", "default": "mpcamera/models", "description": "Directory scanned for local `.pth` models (relative to project root or absolute)." }
+        "local_models_dir": { "type": "string", "default": "models", "description": "Directory scanned for local `.pth` models (relative to project root or absolute)." }
       },
       "additionalProperties": false
     },
@@ -98,8 +98,8 @@
     "paths": {
       "type": "object",
       "properties": {
-        "models_dir": { "type": "string", "default": "mpcamera/models", "description": "Path used by CLI/test utilities to look for local models." },
-        "validation_images_dir": { "type": "string", "default": "mpcamera/models/validation_set", "description": "Default path for validation images used by `run_validation_inference.py`." },
+        "models_dir": { "type": "string", "default": "models", "description": "Path used by CLI/test utilities to look for local models." },
+        "validation_images_dir": { "type": "string", "default": "models/validation_set", "description": "Default path for validation images used by `run_validation_inference.py`." },
         "temp_image_suffix": { "type": "string", "default": ".jpg", "description": "Suffix used when writing temporary adjusted images." }
       },
       "additionalProperties": false
