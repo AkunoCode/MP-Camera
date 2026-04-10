@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs basename:*)",
+      "Bash(grep -E \"\\\\.\\(json|yaml|yml|toml|cfg|ini\\)$\")",
+      "Bash(grep -E \"\\\\.\\(py|ui|json|txt|md\\)$\")"
+    ]
+  }
+}
