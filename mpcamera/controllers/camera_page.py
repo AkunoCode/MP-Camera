@@ -2,6 +2,7 @@
 import json
 import os
 import glob
+import logging
 import tempfile
 import traceback
 import threading
@@ -13,6 +14,8 @@ from enum import Enum, auto
 
 from PyQt6 import QtWidgets, QtCore, QtGui
 from mpcamera.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 # --- CAMERA DETECTION IMPORT ---
 from PyQt6.QtMultimedia import QMediaDevices
@@ -239,7 +242,9 @@ class CameraPageController(QtCore.QObject):
             self._camera_worker = CameraWorker()
             self._camera_worker.frame_received.connect(self._on_worker_frame)
             self._camera_worker.error_occurred.connect(self._on_worker_error)
-        except Exception:
+            logger.info("CameraWorker initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize CameraWorker: {e}", exc_info=True)
             self._camera_worker = None
 
         # Inference worker (runs local or cloud inference in background)
@@ -1042,9 +1047,10 @@ class CameraPageController(QtCore.QObject):
         """
         try:
             idx = int(getattr(self, "_selected_camera_index", 0))
-            print(f"[CAMERA] Starting camera worker for index: {idx}")
+            logger.info(f"Starting camera worker for index: {idx}")
 
             if self._camera_worker is None:
+                logger.error("Camera worker is None - cannot start camera")
                 QtWidgets.QMessageBox.warning(
                     self.page, "Camera Error", "Camera worker unavailable."
                 )
@@ -1052,6 +1058,7 @@ class CameraPageController(QtCore.QObject):
 
             # Start worker which opens the device and begins emitting frames
             self._camera_worker.start_camera(idx)
+            logger.info(f"Camera started successfully on index {idx}")
 
             # Assume streaming once worker started; worker will emit errors if not
             self._streaming = True
@@ -1060,8 +1067,7 @@ class CameraPageController(QtCore.QObject):
             self._stream_inference_timer.start()
 
         except Exception as e:
-            print(f"Camera Start Error: {e}")
-            traceback.print_exc()
+            logger.error(f"Camera Start Error: {e}", exc_info=True)
 
     def _stop_camera(self):
         # Stop worker and timers
