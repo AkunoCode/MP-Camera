@@ -1214,6 +1214,7 @@ class CameraPageController(QtCore.QObject):
             QtWidgets.QMessageBox.warning(self.page, "Camera Error", str(message))
             # Ensure state consistency
             self._streaming = False
+            self._inference_running = False
             try:
                 self._stream_inference_timer.stop()
             except Exception:
