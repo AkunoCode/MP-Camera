@@ -170,7 +170,12 @@ class ResultsWindow(QtWidgets.QMainWindow):
                 self._preview_ctrl.scene.clear()
             return
 
+        MAX_ROWS = 10_000
+        rows_inserted = 0
         for i, p in enumerate(preds):
+            if rows_inserted >= MAX_ROWS:
+                print(f"[RESULTS] Table capped at {MAX_ROWS} rows — truncating display")
+                break
             self.table.insertRow(i)
 
             # --- A. Calculate Data ---
@@ -244,6 +249,7 @@ class ResultsWindow(QtWidgets.QMainWindow):
 
             # Note: Verification column removed — verification status is kept
             # in the internal `_cached_morphometrics` but not shown as a table column.
+            rows_inserted += 1
 
         self.table.setSortingEnabled(True)
 
