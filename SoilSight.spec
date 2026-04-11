@@ -97,5 +97,6 @@ if sys.platform == "darwin":
             "NSPrincipalClass": "NSApplication",
             "NSHighResolutionCapable": True,
             "CFBundleShortVersionString": Path("VERSION").read_text().strip(),
+            "NSCameraUsageDescription": "SoilSight needs camera access to capture microscope frames for microplastic analysis.",
         },
     )
