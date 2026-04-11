@@ -1,10 +1,14 @@
 from PyQt6 import QtWidgets, QtCore, QtGui
 import json
 import datetime
+import logging
 import traceback
 import re
 from threading import Thread
 from typing import Optional, Dict, List, Any, Union
+from mpcamera.logging_utils import get_logger
+
+logger = get_logger(__name__)
 
 # --- Safe Service Imports ---
 try:
@@ -65,7 +69,7 @@ class SamplePageController(QtCore.QObject):
 
         missing = [k for k, v in ui.items() if v is None]
         if missing:
-            print(f"SamplePageController Warning: Missing widgets: {missing}")
+            logger.warning(f"SamplePageController Warning: Missing widgets: {missing}")
         return ui
 
     def _init_table_behavior(self):
@@ -452,7 +456,7 @@ class SamplePageController(QtCore.QObject):
             self.main_window._start_directus_fetch()
 
     def _on_worker_error(self, tb):
-        print(f"Worker Error: {tb}")
+        logger.error(f"Worker Error: {tb}")
         QtWidgets.QMessageBox.critical(self.page, "Error", "Operation failed.")
         self._toggle_buttons(mode="reset")
 
@@ -484,5 +488,4 @@ def setup(sample_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
     try:
         sample_page._controller = SamplePageController(sample_page, main_window)
     except Exception as e:
-        print(f"SamplePage setup failed: {e}")
-        traceback.print_exc()
+        logger.error(f"SamplePage setup failed: {e}", exc_info=True)

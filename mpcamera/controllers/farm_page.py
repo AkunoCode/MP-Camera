@@ -1,8 +1,12 @@
 from PyQt6 import QtWidgets, QtCore, QtGui
 import json
+import logging
 import traceback
 from threading import Thread
 from typing import Optional, Dict, List, Any
+from mpcamera.logging_utils import get_logger
+
+logger = get_logger(__name__)
 
 # --- Safe Service Imports ---
 try:
@@ -78,7 +82,7 @@ class FarmPageController(QtCore.QObject):
         # Log missing important widgets
         missing = [k for k, v in ui.items() if v is None]
         if missing:
-            print(f"FarmPageController Warning: Missing widgets: {missing}")
+            logger.warning(f"FarmPageController Warning: Missing widgets: {missing}")
 
         return ui
 
@@ -447,7 +451,7 @@ class FarmPageController(QtCore.QObject):
             self.main_window._start_directus_fetch()
 
     def _on_worker_error(self, tb):
-        print(f"Worker Error: {tb}")
+        logger.error(f"Worker Error: {tb}")
         QtWidgets.QMessageBox.critical(
             self.page, "Failed", "Operation failed. Check console."
         )
@@ -563,5 +567,4 @@ def setup(farm_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
         # Attach controller to widget to keep it alive
         farm_page._controller = FarmPageController(farm_page, main_window)
     except Exception as e:
-        print(f"FarmPage setup failed: {e}")
-        traceback.print_exc()
+        logger.error(f"FarmPage setup failed: {e}", exc_info=True)

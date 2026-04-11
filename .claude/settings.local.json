@@ -3,7 +3,13 @@
     "allow": [
       "Bash(xargs basename:*)",
       "Bash(grep -E \"\\\\.\\(json|yaml|yml|toml|cfg|ini\\)$\")",
-      "Bash(grep -E \"\\\\.\\(py|ui|json|txt|md\\)$\")"
+      "Bash(grep -E \"\\\\.\\(py|ui|json|txt|md\\)$\")",
+      "Bash(python -c \"from mpcamera.config import Settings; Settings.load\\(\\)\")",
+      "Bash(python -c \"from mpcamera.services.roboflow import RoboflowClient; c = RoboflowClient\\(\\)\")",
+      "Bash(python -c \"from mpcamera.services.directus import DirectusClient; DirectusClient\\(\\)\")",
+      "Bash(python -c \"from mpcamera.utils.inference_utils import parse_result_to_preds, apply_confidence_iou_filters; result = [{'class': 'fragment', 'confidence': 0.9}]; preds = parse_result_to_preds\\(result\\); apply_confidence_iou_filters\\(result, 0.5, 0.5\\); print\\('✓ inference_utils.py parses and filters'\\)\")",
+      "Bash(python main.py)",
+      "Read(//Users/kodecraft-carlo-rabe/.mpcamera/**)"
     ]
   }
 }

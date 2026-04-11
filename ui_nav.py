@@ -92,7 +92,7 @@ class MainWindow(QtWidgets.QMainWindow):
                             label, alignment=QtCore.Qt.AlignmentFlag.AlignCenter
                         )
         except Exception as e:
-            print("Failed to place soilsight image on homepage:", e)
+            logger.warning(f"Failed to place soilsight image on homepage: {e}")
 
         # mapping from nav widget name -> stacked index
         # Note: stackedWidget indices are: home=0, farm=1, samples=2, camera=3, settings=4
@@ -179,7 +179,7 @@ class MainWindow(QtWidgets.QMainWindow):
             )
             camera_page = self.findChild(QtWidgets.QWidget, "cameraPage")
             if camera_page is not None and os.path.exists(camera_ui_path):
-                print("Loading cameraPage UI from:", camera_ui_path)
+                logger.debug(f"Loading cameraPage UI from: {camera_ui_path}")
                 uic.loadUi(camera_ui_path, camera_page)
                 # delegate camera initialization to the page module
                 try:
@@ -187,14 +187,13 @@ class MainWindow(QtWidgets.QMainWindow):
 
                     camera_page_module.setup(camera_page, self)
                 except Exception as e:
-                    print("Failed to initialize camera page module:", e)
+                    logger.error(f"Failed to initialize camera page module: {e}", exc_info=True)
             else:
-                print(
-                    "cameraPage placeholder not found or cameraPage.ui missing at:",
-                    camera_ui_path,
+                logger.warning(
+                    f"cameraPage placeholder not found or cameraPage.ui missing at: {camera_ui_path}"
                 )
         except Exception as e:
-            print("Error setting up cameraPage UI:", e)
+            logger.error(f"Error setting up cameraPage UI: {e}", exc_info=True)
         # If a separate farmPage.ui exists, load it into the placeholder page
         try:
             farm_ui_path = os.path.join(
@@ -202,11 +201,11 @@ class MainWindow(QtWidgets.QMainWindow):
             )
             farm_page = self.findChild(QtWidgets.QWidget, "farmPage")
             if farm_page is not None and os.path.exists(farm_ui_path):
-                print("Loading farmPage UI from:", farm_ui_path)
+                logger.debug(f"Loading farmPage UI from: {farm_ui_path}")
                 try:
                     uic.loadUi(farm_ui_path, farm_page)
                 except Exception as e:
-                    print("Failed to load farmPage.ui into placeholder:", e)
+                    logger.error(f"Failed to load farmPage.ui into placeholder: {e}", exc_info=True)
                 # if there is a farm page controller, call its setup(camera_page, self)
                 try:
                     from mpcamera.controllers import farm_page as farm_page_module
@@ -214,17 +213,16 @@ class MainWindow(QtWidgets.QMainWindow):
                     try:
                         farm_page_module.setup(farm_page, self)
                     except Exception as e:
-                        print(f"[NAV] farm_page_module.setup failed: {e}")
+                        logger.error(f"farm_page_module.setup failed: {e}", exc_info=True)
                 except Exception:
                     # no controller module present; that's fine
                     pass
             else:
-                print(
-                    "farmPage placeholder not found or farmPage.ui missing at:",
-                    farm_ui_path,
+                logger.warning(
+                    f"farmPage placeholder not found or farmPage.ui missing at: {farm_ui_path}"
                 )
         except Exception as e:
-            print("Error setting up farmPage UI:", e)
+            logger.error(f"Error setting up farmPage UI: {e}", exc_info=True)
         # If a separate samplePage.ui exists, load it into the placeholder page
         try:
             sample_ui_path = os.path.join(
@@ -232,27 +230,26 @@ class MainWindow(QtWidgets.QMainWindow):
             )
             samples_page = self.findChild(QtWidgets.QWidget, "samplesPage")
             if samples_page is not None and os.path.exists(sample_ui_path):
-                print("Loading samplePage UI from:", sample_ui_path)
+                logger.debug(f"Loading samplePage UI from: {sample_ui_path}")
                 try:
                     uic.loadUi(sample_ui_path, samples_page)
                 except Exception as e:
-                    print("Failed to load samplePage.ui into placeholder:", e)
+                    logger.error(f"Failed to load samplePage.ui into placeholder: {e}", exc_info=True)
                 try:
                     from mpcamera.controllers import samples_page as samples_page_module
 
                     try:
                         samples_page_module.setup(samples_page, self)
                     except Exception as e:
-                        print(f"[NAV] samples_page_module.setup failed: {e}")
+                        logger.error(f"samples_page_module.setup failed: {e}", exc_info=True)
                 except Exception:
                     pass
             else:
-                print(
-                    "samplesPage placeholder not found or samplePage.ui missing at:",
-                    sample_ui_path,
+                logger.warning(
+                    f"samplesPage placeholder not found or samplePage.ui missing at: {sample_ui_path}"
                 )
         except Exception as e:
-            print("Error setting up samplesPage UI:", e)
+            logger.error(f"Error setting up samplesPage UI: {e}", exc_info=True)
         # If a separate chartPage.ui exists, load it into the placeholder page
         # chart page removed: we intentionally do not load chartPage.ui
         # If a separate settingsPage.ui exists, load it into the placeholder page
@@ -262,11 +259,11 @@ class MainWindow(QtWidgets.QMainWindow):
             )
             settings_page = self.findChild(QtWidgets.QWidget, "settingsPage")
             if settings_page is not None and os.path.exists(settings_ui_path):
-                print("Loading settingsPage UI from:", settings_ui_path)
+                logger.debug(f"Loading settingsPage UI from: {settings_ui_path}")
                 try:
                     uic.loadUi(settings_ui_path, settings_page)
                 except Exception as e:
-                    print("Failed to load settingsPage.ui into placeholder:", e)
+                    logger.error(f"Failed to load settingsPage.ui into placeholder: {e}", exc_info=True)
                 try:
                     from mpcamera.controllers import (
                         settings_page as settings_page_module,
@@ -275,16 +272,15 @@ class MainWindow(QtWidgets.QMainWindow):
                     try:
                         settings_page_module.setup(settings_page, self)
                     except Exception as e:
-                        print(f"[NAV] settings_page_module.setup failed: {e}")
+                        logger.error(f"settings_page_module.setup failed: {e}", exc_info=True)
                 except Exception:
                     pass
             else:
-                print(
-                    "settingsPage placeholder not found or settingsPage.ui missing at:",
-                    settings_ui_path,
+                logger.warning(
+                    f"settingsPage placeholder not found or settingsPage.ui missing at: {settings_ui_path}"
                 )
         except Exception as e:
-            print("Error setting up settingsPage UI:", e)
+            logger.error(f"Error setting up settingsPage UI: {e}", exc_info=True)
         
         # Show setup wizard if this is first run (missing API credentials)
         self._show_setup_wizard_if_needed()
@@ -315,7 +311,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if hasattr(self, "_camera_controller") and self._camera_controller is not None:
                 self._camera_controller.cleanup()
         except Exception as e:
-            print(f"Cleanup error on close: {e}")
+            logger.error(f"Cleanup error on close: {e}", exc_info=True)
         super().closeEvent(event)
 
     def _highlight_frame_for_nav(self, nav_name: str):
@@ -334,7 +330,7 @@ class MainWindow(QtWidgets.QMainWindow):
         - Special-case `soilsightLogo`: go to index 0 and leave all frames unselected.
         """
         try:
-            print(f"Nav clicked: {nav_name}")
+            logger.debug(f"Nav clicked: {nav_name}")
             # special-case chartNavButton: ask user whether to open external link in browser
             if nav_name == "chartNavButton":
                 try:
@@ -356,9 +352,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
                             webbrowser.open("https://soilsight-one.vercel.app")
                         except Exception as e:
-                            print("Failed to open browser:", e)
+                            logger.error(f"Failed to open browser: {e}", exc_info=True)
                 except Exception as e:
-                    print("Error prompting to open external chart link:", e)
+                    logger.error(f"Error prompting to open external chart link: {e}", exc_info=True)
                 # do not change stacked widget index for chart navigation
                 return
 
@@ -381,7 +377,7 @@ class MainWindow(QtWidgets.QMainWindow):
                             try:
                                 self._start_directus_fetch()
                             except Exception as e:
-                                print("Failed to refresh Directus on nav change:", e)
+                                logger.error(f"Failed to refresh Directus on nav change: {e}", exc_info=True)
                     except Exception:
                         pass
 
@@ -406,9 +402,9 @@ class MainWindow(QtWidgets.QMainWindow):
             try:
                 self._highlight_frame_for_nav(nav_name)
             except Exception as e:
-                print("Error highlighting frame for nav:", e)
+                logger.error(f"Error highlighting frame for nav: {e}", exc_info=True)
         except Exception as e:
-            print("Error in on_nav_clicked:", e)
+            logger.error(f"Error in on_nav_clicked: {e}", exc_info=True)
 
     # Chart zoom helpers are handled by mpcamera.pages.chart_page; delegated there.
 

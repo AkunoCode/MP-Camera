@@ -721,8 +721,8 @@ class CameraPageController(QtCore.QObject):
         Includes specific fixes: Re-acquires UI refs, explicit None checks, and debug logging.
         """
         try:
-            print(
-                f"[CAMERA PAGE] _populate_data running in thread={threading.current_thread().name}"
+            logger.debug(
+                f"_populate_data running in thread={threading.current_thread().name}"
             )
 
             # 1. Re-acquire UI elements in case UI was reloaded
@@ -736,11 +736,11 @@ class CameraPageController(QtCore.QObject):
             soils = extract_directus_items(get_soils())
 
             # 3. Debug Logging
-            print(
-                f"[CAMERA PAGE] fetched sites count={len(sites) if sites is not None else 0}"
+            logger.debug(
+                f"fetched sites count={len(sites) if sites is not None else 0}"
             )
-            print(
-                f"[CAMERA PAGE] fetched soils count={len(soils) if soils is not None else 0}"
+            logger.debug(
+                f"fetched soils count={len(soils) if soils is not None else 0}"
             )
 
             # 4. Update Cache & Backwards Compat
@@ -756,12 +756,11 @@ class CameraPageController(QtCore.QObject):
             if self.ui["farm_combo"] is not None:
                 current_farm_id = self.ui["farm_combo"].currentData()
 
-            print(f"[CAMERA PAGE] initial filter soil by farm_id={current_farm_id}")
+            logger.debug(f"initial filter soil by farm_id={current_farm_id}")
             self._filter_soil_combo(current_farm_id)
 
         except Exception as e:
-            print(f"CameraPageController: Data population error: {e}")
-            traceback.print_exc()
+            logger.error(f"Data population error: {e}", exc_info=True)
 
     def _update_farm_combo(self, sites: List[Dict]):
         combo = self.ui["farm_combo"]
@@ -770,7 +769,7 @@ class CameraPageController(QtCore.QObject):
             return
 
         if not sites:
-            print("[CAMERA PAGE] update_farm_combo: No sites to add.")
+            logger.debug("update_farm_combo: No sites to add.")
             return
 
         combo.blockSignals(True)
@@ -781,7 +780,7 @@ class CameraPageController(QtCore.QObject):
                 name = item.get("site_name") or item.get("name") or str(item.get("id"))
                 combo.addItem(str(name), item.get("id"))
             except Exception as e:
-                print(f"[CAMERA PAGE] failed to add farm item idx={idx} error={e}")
+                logger.warning(f"failed to add farm item idx={idx} error={e}")
 
         combo.setCurrentIndex(-1)
         combo.blockSignals(False)
@@ -807,7 +806,7 @@ class CameraPageController(QtCore.QObject):
                     combo.addItem(label, sid)
                     count += 1
                 except Exception as e:
-                    print(f"[CAMERA PAGE] failed to add soil item error={e}")
+                    logger.warning(f"failed to add soil item error={e}")
 
         combo.blockSignals(False)
 
@@ -848,7 +847,7 @@ class CameraPageController(QtCore.QObject):
                     self.page, "No Results", "No inference results available."
                 )
         except Exception as e:
-            print(f"Failed opening large inference window from button: {e}")
+            logger.error(f"Failed opening large inference window from button: {e}", exc_info=True)
 
     def _on_param_changed(self):
         """Called when Confidence or IoU slider is adjusted/released."""
@@ -858,7 +857,7 @@ class CameraPageController(QtCore.QObject):
         except Exception:
             pass
 
-        print("[CAMERA PAGE] Model parameters changed, re-running inference...")
+        logger.debug("Model parameters changed, re-running inference...")
         if self._last_pixmap is not None:
             self._run_inference_on_pixmap(self._last_pixmap, is_temp=True)
 
@@ -1022,7 +1021,7 @@ class CameraPageController(QtCore.QObject):
 
         # Check if it is a local file path
         if isinstance(data, str) and data.lower().endswith((".pth", ".pt")):
-            print(f"[CAMERA PAGE] Selected local model: {data}")
+            logger.info(f"Selected local model: {data}")
             # If we switch models, we might want to reset the engine so it reloads
             if self._current_local_model_path != data:
                 self._local_engine = None
@@ -1037,7 +1036,7 @@ class CameraPageController(QtCore.QObject):
             # It's a Roboflow ID
             try:
                 RoboflowClient.get_default().workflow = data
-                print(f"[CAMERA PAGE] Roboflow workflow set to {data}")
+                logger.info(f"Roboflow workflow set to {data}")
                 # Reset local state
                 self._current_local_model_path = None
                 self._local_engine = None
@@ -1046,7 +1045,7 @@ class CameraPageController(QtCore.QObject):
 
         # Re-run inference if static image exists
         if self._last_pixmap is not None:
-            print(f"[CAMERA PAGE] re-running inference due to model change")
+            logger.debug(f"re-running inference due to model change")
             self._run_inference_on_pixmap(self._last_pixmap, is_temp=True)
 
     # ================= CAMERA LOGIC =================
@@ -1203,7 +1202,7 @@ class CameraPageController(QtCore.QObject):
         except Exception:
             idx = 0
 
-        print(f"[CAMERA] User selected camera index: {idx}")
+        logger.debug(f"User selected camera index: {idx}")
         self._selected_camera_index = idx
 
         # If camera is currently streaming, stop and restart to switch sources
@@ -1274,7 +1273,7 @@ class CameraPageController(QtCore.QObject):
                     # fallback: run inference on original file
                     self._run_inference(fname, is_temp=False)
             except Exception as e:
-                print(f"Failed to run inference on uploaded image: {e}")
+                logger.error(f"Failed to run inference on uploaded image: {e}", exc_info=True)
 
     def _on_worker_frame(self, frame: np.ndarray):
         """Handle frames emitted from CameraWorker."""
@@ -1290,7 +1289,7 @@ class CameraPageController(QtCore.QObject):
 
     def _on_worker_error(self, message: str):
         try:
-            print(f"[CAMERA WORKER ERROR] {message}")
+            logger.error(f"Camera worker error: {message}")
             QtWidgets.QMessageBox.warning(self.page, "Camera Error", str(message))
             # Ensure state consistency
             self._streaming = False
@@ -1390,7 +1389,7 @@ class CameraPageController(QtCore.QObject):
         """Handler for reload button: re-run inference on the currently displayed/adjusted image."""
         # Prevent concurrent inferences
         if self._inference_running:
-            print("Inference already running; reload ignored.")
+            logger.debug("Inference already running; reload ignored.")
             return
 
         # Prefer the QPixmap if available
@@ -1409,7 +1408,7 @@ class CameraPageController(QtCore.QObject):
                 self._run_inference(tmp.name, is_temp=True)
                 return
             except Exception as e:
-                print(f"Reload inference failed to write temp image: {e}")
+                logger.error(f"Reload inference failed to write temp image: {e}", exc_info=True)
 
         # Nothing to run on
         QtWidgets.QMessageBox.information(
@@ -1489,10 +1488,10 @@ class CameraPageController(QtCore.QObject):
             tmp_path = tmp.name
             pixmap.save(tmp_path, "JPG")
             if is_temp:
-                print(f"[CAMERA PAGE] running temp inference on {tmp_path}")
+                logger.debug(f"running temp inference on {tmp_path}")
             self._run_inference(tmp_path, is_temp=is_temp)
         except Exception as e:
-            print(f"Temp file creation failed: {e}")
+            logger.error(f"Temp file creation failed: {e}", exc_info=True)
             # Clean up temp file if inference was never started
             if tmp_path and os.path.exists(tmp_path):
                 try:
@@ -1529,8 +1528,8 @@ class CameraPageController(QtCore.QObject):
             except Exception:
                 model_data = None
 
-        print(
-            f"[INFERENCE] Running with Conf={conf_val}, IoU={iou_val}, model={model_data}"
+        logger.debug(
+            f"Running with Conf={conf_val}, IoU={iou_val}, model={model_data}"
         )
 
         # Mark running
@@ -1545,10 +1544,10 @@ class CameraPageController(QtCore.QObject):
                 )
                 return
             except Exception as e:
-                print(f"InferenceWorker invocation failed: {e}")
+                logger.error(f"InferenceWorker invocation failed: {e}", exc_info=True)
 
         # If InferenceWorker is unavailable, surface the error clearly
-        print("[INFERENCE] InferenceWorker not available — inference skipped")
+        logger.error("InferenceWorker not available — inference skipped")
         self._inference_running = False
         self._toggle_spinner(False)
 
@@ -1578,7 +1577,7 @@ class CameraPageController(QtCore.QObject):
                         try:
                             render_predictions_on_scene(scene, raw_result)
                         except Exception as e:
-                            print(f"Overlay render failed: {e}")
+                            logger.warning(f"Overlay render failed: {e}")
             except Exception:
                 pass
 
@@ -1587,14 +1586,14 @@ class CameraPageController(QtCore.QObject):
                 self._update_table(preds)
                 self._update_stats(preds)
             except Exception as e:
-                print(f"Data processing failed: {e}")
+                logger.error(f"Data processing failed: {e}", exc_info=True)
 
         except Exception:
             pass
 
     def _on_inference_worker_error(self, message: str):
         try:
-            print(f"[INFERENCE WORKER ERROR] {message}")
+            logger.error(f"Inference worker error: {message}")
             QtWidgets.QMessageBox.warning(self.page, "Inference Error", str(message))
             self._inference_running = False
             try:
@@ -1668,7 +1667,7 @@ class CameraPageController(QtCore.QObject):
                     # render_predictions_on_scene expects the raw result structure
                     render_predictions_on_scene(scene, result)
                 except Exception as e:
-                    print(f"Overlay render failed: {e}")
+                    logger.warning(f"Overlay render failed: {e}")
 
         # 2. Process Data
         try:
@@ -1677,7 +1676,7 @@ class CameraPageController(QtCore.QObject):
             self._update_stats(preds)
             # do not auto-open the large window — user may open via the viewDetails button
         except Exception as e:
-            print(f"Data processing failed: {e}")
+            logger.error(f"Data processing failed: {e}", exc_info=True)
 
     def _toggle_spinner(self, show: bool):
         view = self.ui["cam_view"]
@@ -1813,7 +1812,7 @@ class CameraPageController(QtCore.QObject):
                 try:
                     win.update_data(preds, last_pix, cur_img)
                 except Exception as e:
-                    print(f"ResultsWindow update failed: {e}")
+                    logger.error(f"ResultsWindow update failed: {e}", exc_info=True)
                 # Connect ResultsWindow save signal so edits from that window
                 # are received back here and can be saved to Directus.
                 try:
@@ -1883,7 +1882,7 @@ class CameraPageController(QtCore.QObject):
             except Exception:
                 pass
         except Exception as e:
-            print(f"Failed opening large results window: {e}")
+            logger.error(f"Failed opening large results window: {e}", exc_info=True)
 
     def _on_results_committed(self, records: List[Dict[str, Any]]):
         """Handle data emitted from the ResultsWindow Save action.
@@ -1920,7 +1919,7 @@ class CameraPageController(QtCore.QObject):
             except Exception:
                 pass
         except Exception as e:
-            print(f"_on_results_committed error: {e}")
+            logger.error(f"_on_results_committed error: {e}", exc_info=True)
 
     def _update_stats(self, preds):
         try:
@@ -2175,7 +2174,7 @@ class CameraPageController(QtCore.QObject):
                     self._last_pixmap.save(t.name, "JPG")
                     img_path = t.name
                 except Exception as e:
-                    print(f"Error saving temp image: {e}")
+                    logger.error(f"Error saving temp image: {e}", exc_info=True)
         except Exception:
             # Best-effort: continue without images if anything goes wrong
             img_path = None
@@ -2193,7 +2192,7 @@ class CameraPageController(QtCore.QObject):
                 count = ResultsManager.process_upload(client, payloads, img_path)
 
             except Exception as e:
-                print(f"Save Worker Error: {e}")
+                logger.error(f"Save Worker Error: {e}", exc_info=True)
                 traceback.print_exc()
 
             self.data_saved_signal.emit(count)
@@ -2241,7 +2240,7 @@ class CameraPageController(QtCore.QObject):
             pass
         # Daemon threads finish on their own since they are non-blocking IO or GPU work;
         # the OS will reclaim resources. Log that shutdown is requested.
-        print("[CAMERA PAGE] cleanup complete")
+        logger.debug("cleanup complete")
 
 
 # ================= ENTRY POINT =================
@@ -2251,7 +2250,6 @@ def setup(camera_page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
     """Called by main application to initialize the Camera Page."""
     try:
         camera_page._controller = CameraPageController(camera_page, main_window)
-        print("CameraPageController initialized.")
+        logger.info("CameraPageController initialized successfully")
     except Exception as e:
-        print(f"camera_page.setup failed: {e}")
-        traceback.print_exc()
+        logger.error(f"camera_page.setup failed: {e}", exc_info=True)
