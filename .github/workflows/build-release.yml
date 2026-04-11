@@ -1,0 +1,87 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            label: mac
+          - os: windows-latest
+            label: windows
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Read version
+        id: version
+        shell: bash
+        run: echo "VERSION=$(cat VERSION)" >> $GITHUB_OUTPUT
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller pyinstaller-hooks-contrib
+
+      # ── Mac ──────────────────────────────────────────────────────────────
+      - name: Install create-dmg (Mac)
+        if: matrix.os == 'macos-latest'
+        run: brew install create-dmg
+
+      - name: Build Mac DMG
+        if: matrix.os == 'macos-latest'
+        run: |
+          pyinstaller SoilSight.spec --clean
+          create-dmg \
+            --volname "SoilSight ${{ steps.version.outputs.VERSION }}" \
+            --window-pos 200 120 \
+            --window-size 660 400 \
+            --icon-size 100 \
+            --icon "SoilSight.app" 165 185 \
+            --hide-extension "SoilSight.app" \
+            --app-drop-link 495 185 \
+            "dist/SoilSight-${{ steps.version.outputs.VERSION }}-mac.dmg" \
+            "dist/SoilSight.app" || true
+          if [ -f "dist/rw."*".SoilSight-${{ steps.version.outputs.VERSION }}-mac.dmg" ]; then
+            mv dist/rw.*"SoilSight-${{ steps.version.outputs.VERSION }}-mac.dmg" "dist/SoilSight-${{ steps.version.outputs.VERSION }}-mac.dmg"
+          fi
+
+      # ── Windows ──────────────────────────────────────────────────────────
+      - name: Install NSIS (Windows)
+        if: matrix.os == 'windows-latest'
+        run: choco install nsis --yes
+
+      - name: Build Windows installer
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          pyinstaller SoilSight.spec --clean
+          & 'C:\Program Files (x86)\NSIS\makensis.exe' build\installer.nsis
+
+      # ── Upload ───────────────────────────────────────────────────────────
+      - name: Upload Mac DMG
+        if: matrix.os == 'macos-latest'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/SoilSight-${{ steps.version.outputs.VERSION }}-mac.dmg
+
+      - name: Upload Windows installer
+        if: matrix.os == 'windows-latest'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/SoilSight-${{ steps.version.outputs.VERSION }}-windows-setup.exe
