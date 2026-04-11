@@ -19,3 +19,5 @@ prediction_debug.txt
 
 build/
 dist/
+
+.superpowers/
