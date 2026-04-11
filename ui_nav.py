@@ -210,8 +210,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
                     try:
                         farm_page_module.setup(farm_page, self)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        print(f"[NAV] farm_page_module.setup failed: {e}")
                 except Exception:
                     # no controller module present; that's fine
                     pass
@@ -239,8 +239,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
                     try:
                         samples_page_module.setup(samples_page, self)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        print(f"[NAV] samples_page_module.setup failed: {e}")
                 except Exception:
                     pass
             else:
@@ -271,8 +271,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
                     try:
                         settings_page_module.setup(settings_page, self)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        print(f"[NAV] settings_page_module.setup failed: {e}")
                 except Exception:
                     pass
             else:
