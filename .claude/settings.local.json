@@ -9,7 +9,9 @@
       "Bash(python -c \"from mpcamera.services.directus import DirectusClient; DirectusClient\\(\\)\")",
       "Bash(python -c \"from mpcamera.utils.inference_utils import parse_result_to_preds, apply_confidence_iou_filters; result = [{'class': 'fragment', 'confidence': 0.9}]; preds = parse_result_to_preds\\(result\\); apply_confidence_iou_filters\\(result, 0.5, 0.5\\); print\\('✓ inference_utils.py parses and filters'\\)\")",
       "Bash(python main.py)",
-      "Read(//Users/kodecraft-carlo-rabe/.mpcamera/**)"
+      "Read(//Users/kodecraft-carlo-rabe/.mpcamera/**)",
+      "Bash(python -c \"from mpcamera.controllers import camera_page; print\\('Import successful'\\)\")",
+      "Bash(python -c \"from mpcamera.path_utils import get_base_dir, get_resource_path; print\\('Base dir:', get_base_dir\\(\\)\\); print\\('Main UI:', get_resource_path\\('mpcamera/layouts/SoilSight_MainWindow.ui'\\)\\)\")"
     ]
   }
 }

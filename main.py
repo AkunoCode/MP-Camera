@@ -3,14 +3,14 @@ from PyQt6 import QtWidgets, QtGui
 import os
 from ui_nav import MainWindow
 from mpcamera.logging_utils import setup_logging, get_logger
+from mpcamera.path_utils import get_resource_path
 
 logger = get_logger(__name__)
 
 # --- Constants ---
 APP_NAME = "SoilSight"
-BASE_DIR = os.path.dirname(__file__)
-LAYOUT_PATH = os.path.join(BASE_DIR, "mpcamera", "layouts", f"{APP_NAME}_MainWindow.ui")
-ICON_PATH = os.path.join(BASE_DIR, "mpcamera", "assets", f"{APP_NAME}_Logo.ico")
+LAYOUT_PATH = get_resource_path(f"mpcamera/layouts/{APP_NAME}_MainWindow.ui")
+ICON_PATH = get_resource_path(f"mpcamera/assets/{APP_NAME}_Logo.ico")
 
 
 def setup_application_properties(app: QtWidgets.QApplication):

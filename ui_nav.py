@@ -4,8 +4,10 @@ import os
 import json
 import logging
 from threading import Thread
+from mpcamera.logging_utils import get_logger
+from mpcamera.path_utils import get_resource_path
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 try:
     from mpcamera.services.directus import DirectusClient
@@ -174,9 +176,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # If a separate cameraPage.ui exists, load it into the placeholder page
         try:
-            camera_ui_path = os.path.join(
-                os.path.dirname(__file__), "mpcamera", "layouts", "cameraPage.ui"
-            )
+            camera_ui_path = get_resource_path("mpcamera/layouts/cameraPage.ui")
             camera_page = self.findChild(QtWidgets.QWidget, "cameraPage")
             if camera_page is not None and os.path.exists(camera_ui_path):
                 logger.debug(f"Loading cameraPage UI from: {camera_ui_path}")
@@ -196,9 +196,7 @@ class MainWindow(QtWidgets.QMainWindow):
             logger.error(f"Error setting up cameraPage UI: {e}", exc_info=True)
         # If a separate farmPage.ui exists, load it into the placeholder page
         try:
-            farm_ui_path = os.path.join(
-                os.path.dirname(__file__), "mpcamera", "layouts", "farmPage.ui"
-            )
+            farm_ui_path = get_resource_path("mpcamera/layouts/farmPage.ui")
             farm_page = self.findChild(QtWidgets.QWidget, "farmPage")
             if farm_page is not None and os.path.exists(farm_ui_path):
                 logger.debug(f"Loading farmPage UI from: {farm_ui_path}")
@@ -225,9 +223,7 @@ class MainWindow(QtWidgets.QMainWindow):
             logger.error(f"Error setting up farmPage UI: {e}", exc_info=True)
         # If a separate samplePage.ui exists, load it into the placeholder page
         try:
-            sample_ui_path = os.path.join(
-                os.path.dirname(__file__), "mpcamera", "layouts", "samplePage.ui"
-            )
+            sample_ui_path = get_resource_path("mpcamera/layouts/samplePage.ui")
             samples_page = self.findChild(QtWidgets.QWidget, "samplesPage")
             if samples_page is not None and os.path.exists(sample_ui_path):
                 logger.debug(f"Loading samplePage UI from: {sample_ui_path}")
@@ -254,9 +250,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # chart page removed: we intentionally do not load chartPage.ui
         # If a separate settingsPage.ui exists, load it into the placeholder page
         try:
-            settings_ui_path = os.path.join(
-                os.path.dirname(__file__), "mpcamera", "layouts", "settingsPage.ui"
-            )
+            settings_ui_path = get_resource_path("mpcamera/layouts/settingsPage.ui")
             settings_page = self.findChild(QtWidgets.QWidget, "settingsPage")
             if settings_page is not None and os.path.exists(settings_ui_path):
                 logger.debug(f"Loading settingsPage UI from: {settings_ui_path}")
