@@ -931,16 +931,15 @@ class CameraPageController(QtCore.QObject):
         except Exception:
             adjusted = raw
 
-        # Update current frame used for color extraction and for saving to disk
-        with self._frame_lock:
-            self._current_frame_np = adjusted
-
-        # Update displayed pixmap
+        # Convert once for display; store BGR separately for inference/color analysis
         try:
             frame_rgb = cv2.cvtColor(adjusted, cv2.COLOR_BGR2RGB)
+            with self._frame_lock:
+                self._current_frame_np = adjusted  # keep BGR for downstream (color analysis uses BGR)
             h, w, ch = frame_rgb.shape
+            bytes_per_line = ch * w
             qimg = QtGui.QImage(
-                frame_rgb.data, w, h, ch * w, QtGui.QImage.Format.Format_RGB888
+                frame_rgb.data, w, h, bytes_per_line, QtGui.QImage.Format.Format_RGB888
             )
             self._last_pixmap = QtGui.QPixmap.fromImage(qimg.copy())
             self._display_pixmap(self._last_pixmap)
