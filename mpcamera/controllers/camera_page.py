@@ -9,6 +9,7 @@ import numpy as np
 from pathlib import Path
 from threading import Thread
 from typing import Optional, List, Dict, Any
+from enum import Enum, auto
 
 from PyQt6 import QtWidgets, QtCore, QtGui
 from mpcamera.config import get_settings
@@ -74,6 +75,14 @@ except ImportError:
     LocalModelInference = None
 
 
+class CameraState(Enum):
+    """State machine for camera page operations."""
+    IDLE = auto()
+    STREAMING = auto()
+    PAUSED = auto()
+    INFERRING = auto()
+
+
 class CameraPageController(QtCore.QObject):
     """
     Controller to manage the logic, state, and UI interactions of the Camera Page.
@@ -122,6 +131,7 @@ class CameraPageController(QtCore.QObject):
         self._last_pixmap: Optional[QtGui.QPixmap] = None
         self._current_frame_np: Optional[np.ndarray] = None
         self._frame_lock = threading.Lock()  # Synchronize access to frame buffers
+        self._camera_state = CameraState.IDLE
         self._cached_soils: List[Dict] = []
         # Currently selected camera device index (int). Defaults to 0.
         self._selected_camera_index: int = 0
@@ -306,6 +316,18 @@ class CameraPageController(QtCore.QObject):
             except Exception:
                 pass
         return str((project_root / "models").resolve())
+
+    def _set_state(self, new_state: CameraState):
+        """Atomically transition to new_state and sync legacy flags."""
+        old = self._camera_state
+        self._camera_state = new_state
+
+        # Sync legacy boolean flags so existing code stays correct
+        self._streaming = new_state in (CameraState.STREAMING, CameraState.INFERRING)
+        self._paused = new_state == CameraState.PAUSED
+        self._inference_running = new_state == CameraState.INFERRING
+
+        print(f"[STATE] {old.name} → {new_state.name}")
 
     def _find_ui_elements(self) -> Dict[str, Any]:
         """Locate and cache UI widgets. Returns a dict to avoid attribute clutter."""
