@@ -986,6 +986,12 @@ class CameraPageController(QtCore.QObject):
             if self._current_local_model_path != data:
                 self._local_engine = None
                 self._current_local_model_path = data
+                # Kick off background model load so first inference is fast
+                if getattr(self, "_inference_worker", None) is not None:
+                    try:
+                        self._inference_worker.preload_model(data)
+                    except Exception:
+                        pass
         elif RoboflowClient and data:
             # It's a Roboflow ID
             try:

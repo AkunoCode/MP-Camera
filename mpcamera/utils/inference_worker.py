@@ -135,3 +135,24 @@ class InferenceWorker(QObject):
 
         # Run in background thread
         threading.Thread(target=worker, daemon=True).start()
+
+    def preload_model(self, model_path: str):
+        """Load the model weights in a background thread so inference starts instantly."""
+        if not LocalModelInference:
+            return
+        if self._current_local_model_path == model_path and self._local_engine is not None:
+            return  # already loaded
+
+        def _load():
+            try:
+                print(f"[INFERENCE] Preloading model: {model_path}")
+                engine = LocalModelInference(
+                    model_path=model_path, num_classes=self.LOCAL_NUM_CLASSES
+                )
+                self._local_engine = engine
+                self._current_local_model_path = model_path
+                print(f"[INFERENCE] Model preloaded: {model_path}")
+            except Exception as e:
+                print(f"[INFERENCE] Preload failed: {e}")
+
+        threading.Thread(target=_load, daemon=True).start()
