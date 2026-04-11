@@ -14,6 +14,9 @@ from pathlib import Path
 # Suppress the torch load warning for cleaner logs
 warnings.filterwarnings("ignore", category=FutureWarning)
 
+import logging
+logger = logging.getLogger(__name__)
+
 try:
     from ultralytics import YOLO
     import supervision as sv
@@ -77,6 +80,7 @@ class LocalModelInference:
                     else ("cuda" if torch.cuda.is_available() else "cpu")
                 )
         except Exception:
+            logger.warning("Could not read inference config; using defaults (conf=0.5, iou=0.4)", exc_info=True)
             confidence_threshold = confidence_threshold or 0.5
             iou_threshold = iou_threshold or 0.4
             device = device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -85,15 +89,13 @@ class LocalModelInference:
         self.iou_threshold = iou_threshold
         self.device = device
 
-        print(f"[INFO] Loading {os.path.basename(self.model_path)} on {self.device}...")
+        logger.info(f"Loading model '{os.path.basename(self.model_path)}' on device '{self.device}'")
 
         # 1. Load Checkpoint for inspection (load on CPU to save VRAM)
         try:
             self.checkpoint = torch.load(self.model_path, map_location="cpu")
         except Exception as e:
-            print(
-                f"[WARNING] Failed to load checkpoint dictionary directly: {e}. Relying on model path for architecture detection."
-            )
+            logger.warning(f"Failed to load checkpoint dict from '{self.model_path}'; will infer architecture from filename. Error: {e}")
             self.checkpoint = {}
 
         # 2. Determine Model Type
@@ -129,7 +131,7 @@ class LocalModelInference:
         for candidate in candidates:
             if candidate.exists() and candidate.is_file():
                 resolved = str(candidate)
-                print(f"[MODEL] Resolved model path: {resolved}")
+                logger.debug(f"Resolved model path: {resolved}")
                 return resolved
 
         raise FileNotFoundError(
@@ -151,7 +153,7 @@ class LocalModelInference:
 
         # Heuristic 1: RF-DETR-SEG detection (PRIORITY CHECK)
         if looks_like_rfdetr and _RFDETR_SEG_AVAILABLE:
-            print(" -> Detected Model Type: RF-DETR-SEG")
+            logger.info("Detected model architecture: RF-DETR-SEG")
             return "RF-DETR-SEG"
 
         # If filename strongly indicates RF-DETR-SEG but dependency is missing,
@@ -170,7 +172,7 @@ class LocalModelInference:
                     "Detected a .pt model, but YOLO dependencies are missing. "
                     "Install `ultralytics` and `supervision`, then restart the app."
                 )
-            print(" -> Detected Model Type: YOLOv11 (Ultralytics)")
+            logger.info("Detected model architecture: YOLOv11 (Ultralytics)")
             return "YOLOv11"
 
         # For `.pth`, keep compatibility with either YOLO-exported or MaskRCNN checkpoints.
@@ -178,11 +180,11 @@ class LocalModelInference:
             if isinstance(self.checkpoint, dict) and (
                 "model" in self.checkpoint or "names" in self.checkpoint
             ):
-                print(" -> Detected Model Type: YOLOv11 (Ultralytics)")
+                logger.info("Detected model architecture: YOLOv11 (Ultralytics) — .pt extension")
                 return "YOLOv11"
 
         # Default/Fallback: Mask R-CNN
-        print(" -> Detected Model Type: MaskRCNN (Default Fallback)")
+        logger.info("Detected model architecture: MaskRCNN (default fallback)")
         return "MaskRCNN"
 
     def _smart_load_model(self):
@@ -209,7 +211,7 @@ class LocalModelInference:
                     device=self.device,
                 )
 
-                print(f" -> Successfully loaded as RF-DETR-SEG on {self.device}.")
+                logger.info(f"RF-DETR-SEG loaded successfully on device '{self.device}'")
                 return model
             except Exception as e:
                 raise RuntimeError(f"Could not load RF-DETR-SEG model. Error: {e}")
@@ -231,21 +233,19 @@ class LocalModelInference:
                     weights=None, num_classes=self.num_classes
                 )
                 model.load_state_dict(state_dict, strict=True)
-                print(" -> Successfully loaded as MaskRCNN-ResNet50.")
+                logger.info("MaskRCNN-ResNet50 loaded successfully")
                 return model
             except RuntimeError as e:
                 # Attempt 2: ResNet101 fallback
                 if "layer3.6" in str(e):
-                    print(
-                        " -> Architecture Mismatch: Requires ResNet101. Trying fallback."
-                    )
+                    logger.info("Architecture mismatch detected; attempting ResNet101 fallback")
 
                 backbone = resnet_fpn_backbone("resnet101", weights=None)
                 model = torchvision.models.detection.MaskRCNN(
                     backbone, num_classes=self.num_classes
                 )
                 model.load_state_dict(state_dict, strict=True)
-                print(" -> Successfully loaded as MaskRCNN-ResNet101.")
+                logger.info("MaskRCNN-ResNet101 loaded successfully")
                 return model
             except RuntimeError as e:
                 raise RuntimeError(
@@ -414,7 +414,7 @@ class LocalModelInference:
         detections = sv.Detections.from_ultralytics(results)
 
         if detections.mask is None:
-            print("[WARNING] YOLO model did not return segmentation masks.")
+            logger.warning("YOLO model did not return segmentation masks; proceeding without mask data")
             return []
 
         formatted_predictions = []
@@ -487,7 +487,7 @@ class LocalModelInference:
         class_ids = getattr(detections, "class_id", None)
 
         if masks is None or xyxy is None or confs is None or class_ids is None:
-            print("[WARNING] RF-DETR-SEG model did not return segmentation masks.")
+            logger.warning("RF-DETR-SEG model did not return segmentation masks; proceeding without mask data")
             return []
 
         # 2. Extract and Format Results
