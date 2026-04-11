@@ -329,6 +329,18 @@ class CameraPageController(QtCore.QObject):
 
         print(f"[STATE] {old.name} → {new_state.name}")
 
+    @property
+    def camera_worker(self) -> "CameraWorker":
+        if self._camera_worker is None:
+            raise RuntimeError("CameraWorker is not available")
+        return self._camera_worker
+
+    @property
+    def inference_worker(self) -> "InferenceWorker":
+        if self._inference_worker is None:
+            raise RuntimeError("InferenceWorker is not available")
+        return self._inference_worker
+
     def _find_ui_elements(self) -> Dict[str, Any]:
         """Locate and cache UI widgets. Returns a dict to avoid attribute clutter."""
         elements = {
