@@ -447,7 +447,6 @@ class CameraPageController(QtCore.QObject):
         # so that their values are applied before the first _apply_adjustments_and_refresh call.
 
         # Worker signals
-        self.inference_finished_signal.connect(self._on_inference_finished)
         self.data_saved_signal.connect(self._on_save_finished)
 
         # Table interaction
@@ -1482,58 +1481,10 @@ class CameraPageController(QtCore.QObject):
             except Exception as e:
                 print(f"InferenceWorker invocation failed: {e}")
 
-        # Fallback: legacy threaded implementation (kept for compatibility)
-        def worker():
-            result = None
-            try:
-                is_local = isinstance(model_data, str) and str(
-                    model_data
-                ).lower().endswith((".pth", ".pt"))
-                if is_local:
-                    if LocalModelInference is None:
-                        raise ImportError("LocalModelInference class not available.")
-
-                    if (
-                        self._local_engine is None
-                        or self._local_engine.model_path != model_data
-                    ):
-                        print(f"[WORKER] Loading Local Model: {model_data}")
-                        self._local_engine = LocalModelInference(
-                            model_path=model_data, num_classes=self.LOCAL_NUM_CLASSES
-                        )
-
-                    json_str = self._local_engine.predict_json(
-                        path,
-                        confidence_threshold=conf_val,
-                        iou_threshold=iou_val,
-                        class_map=self.CLASS_MAP,
-                    )
-                    result = json.loads(json_str)
-                elif RoboflowClient:
-                    client = RoboflowClient.get_default()
-                    try:
-                        result = client.run_workflow(
-                            path, confidence=conf_val, iou=iou_val
-                        )
-                    except TypeError:
-                        result = client.run_workflow(path)
-
-                if result is not None:
-                    result = apply_confidence_iou_filters(
-                        result,
-                        confidence_threshold=conf_val,
-                        iou_threshold=iou_val,
-                    )
-
-            except Exception as e:
-                print(f"Inference Error: {e}")
-                traceback.print_exc()
-                result = None
-            finally:
-                # Emit via the legacy signal so existing handler works
-                self.inference_finished_signal.emit(result, path if is_temp else "")
-
-        Thread(target=worker, daemon=True).start()
+        # If InferenceWorker is unavailable, surface the error clearly
+        print("[INFERENCE] InferenceWorker not available — inference skipped")
+        self._inference_running = False
+        self._toggle_spinner(False)
 
     def _on_inference_worker_finished(self, preds, raw_result):
         """Handler for InferenceWorker.finished(preds, raw_result)."""
