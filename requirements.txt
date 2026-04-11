@@ -19,10 +19,10 @@ inference-sdk==1.0.2
 scikit-learn==1.7.2
 torch==2.5.1
 torchvision==0.20.1
-ultralytics
-rfdetr
-supervision
-pillow
+ultralytics==8.4.37
+rfdetr==1.6.4
+supervision==0.27.0.post2
+pillow==11.3.0
 
 # If you need full developer/test deps, generate a separate requirements-dev.txt
 click==8.3.1
