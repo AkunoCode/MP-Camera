@@ -15,7 +15,15 @@
       "Bash(python -m py_compile mpcamera/utils/results_manager.py)",
       "Bash(grep -B1 \"pass$\")",
       "Bash(python -m py_compile mpcamera/controllers/camera_page.py mpcamera/utils/inference_worker.py mpcamera/utils/inference_utils.py mpcamera/utils/local_models_utils.py mpcamera/utils/results_manager.py mpcamera/ui/results_window.py ui_nav.py)",
-      "Bash(bash /Users/kodecraft-carlo-rabe/.claude/plugins/cache/claude-plugins-official/superpowers/5.0.7/skills/brainstorming/scripts/start-server.sh --project-dir /Users/kodecraft-carlo-rabe/Desktop/MP-Camera)"
+      "Bash(bash /Users/kodecraft-carlo-rabe/.claude/plugins/cache/claude-plugins-official/superpowers/5.0.7/skills/brainstorming/scripts/start-server.sh --project-dir /Users/kodecraft-carlo-rabe/Desktop/MP-Camera)",
+      "Bash(ls *.spec)",
+      "Bash(python -c \"import platform; print\\(platform.system\\(\\), platform.machine\\(\\)\\)\")",
+      "Bash(chmod +x build/build_mac.sh)",
+      "Bash(./build/build_mac.sh)",
+      "Bash(hdiutil eject:*)",
+      "Bash(ls -lh dist/SoilSight-*.dmg)",
+      "Bash(git push:*)",
+      "Bash(git tag:*)"
     ]
   }
 }
