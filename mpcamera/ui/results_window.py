@@ -32,7 +32,7 @@ class _PreviewController(QtCore.QObject):
             )
             self.view.viewport().installEventFilter(self)
         except Exception:
-            pass
+            logger.debug("Could not set render hints on preview view", exc_info=True)
 
     def setPixmap(self, pixmap: QtGui.QPixmap):
         try:
@@ -42,7 +42,7 @@ class _PreviewController(QtCore.QObject):
             self._zoom = 1.0
             self.fit()
         except Exception:
-            pass
+            logger.warning("Could not set preview pixmap", exc_info=True)
 
     def fit(self):
         try:
@@ -182,7 +182,7 @@ class ResultsWindow(QtWidgets.QMainWindow):
         rows_inserted = 0
         for i, p in enumerate(preds):
             if rows_inserted >= MAX_ROWS:
-                print(f"[RESULTS] Table capped at {MAX_ROWS} rows — truncating display")
+                logger.warning(f"Results table capped at {MAX_ROWS} rows — truncating display")
                 break
             self.table.insertRow(i)
 
@@ -300,7 +300,7 @@ class ResultsWindow(QtWidgets.QMainWindow):
                 self._preview_ctrl.scene.clear()
 
         except Exception as e:
-            print(f"Error deleting row: {e}")
+            logger.error(f"Error deleting row", exc_info=True)
 
     def emit_save_data(self):
         """
@@ -312,7 +312,7 @@ class ResultsWindow(QtWidgets.QMainWindow):
         except Exception:
             pass
 
-        print(f"Updating {len(self._cached_morphometrics)} records...")
+        logger.info(f"Uploading {len(self._cached_morphometrics)} morphometric records to Directus")
         self.data_committed.emit(self._cached_morphometrics)
         self.close()
 
