@@ -1058,6 +1058,14 @@ class CameraPageController(QtCore.QObject):
 
         self._streaming = False
         self._inference_running = False
+
+        # Release large frame buffers to free memory
+        with self._frame_lock:
+            self._raw_frame_np = None
+            self._current_frame_np = None
+        self._last_pixmap = None
+        self._last_raw_result = None
+
         # Clear the displayed scene and any inference overlays
         self._clear_scene()
 
