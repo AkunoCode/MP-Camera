@@ -3,7 +3,7 @@
 # dependencies will be resolved by pip when installing.
 
 # GUI
-PyQt6==6.4.2
+PyQt6==6.11.0
 
 # Image / array
 opencv-python==4.10.0.84
