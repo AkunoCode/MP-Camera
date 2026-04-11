@@ -1,10 +1,12 @@
 from typing import List, Dict, Any, Optional
 from math import isnan
+import logging
 import numpy as np
 
 from mpcamera.utils.prediction_utils import extract_points_from_prediction
 from mpcamera.utils.camera_utils import color_for_label
 
+logger = logging.getLogger(__name__)
 
 _CLASS_KEYS = ["sheet", "fragment", "fiber", "bead", "foam", "film"]
 
@@ -75,7 +77,7 @@ def _pred_to_xyxy(pred: Dict[str, Any]) -> Optional[List[float]]:
             if x2p > x1p and y2p > y1p:
                 return [x1p, y1p, x2p, y2p]
     except Exception:
-        pass
+        logger.debug("Failed to extract bbox from polygon points", exc_info=True)
 
     return None
 
@@ -220,6 +222,7 @@ def apply_confidence_iou_filters(
     across local and cloud models, including payloads where backend-level IoU
     controls are unavailable.
     """
+    logger.debug(f"apply_confidence_iou_filters: conf={confidence_threshold}, iou={iou_threshold}")
 
     def _walk(obj: Any):
         try:
@@ -244,6 +247,7 @@ def apply_confidence_iou_filters(
                     if isinstance(it, (dict, list)):
                         _walk(it)
         except Exception:
+            logger.warning("apply_confidence_iou_filters: error walking prediction tree", exc_info=True)
             return
 
     _walk(result)
@@ -306,6 +310,7 @@ def _collect_pred_dicts(obj: Any) -> List[Dict[str, Any]]:
                 out.extend(_collect_pred_dicts(v))
             return out
     except Exception:
+        logger.warning("_collect_pred_dicts: error collecting predictions from result", exc_info=True)
         return out
     return out
 
@@ -317,6 +322,7 @@ def parse_result_to_preds(result: Any) -> List[Dict[str, Any]]:
     optional 'points' and 'size' (None by default).
     """
     flat = _collect_pred_dicts(result)
+    logger.debug(f"parse_result_to_preds: collected {len(flat)} raw prediction dicts")
 
     out = []
     for p in flat:
@@ -344,6 +350,7 @@ def parse_result_to_preds(result: Any) -> List[Dict[str, Any]]:
             try:
                 pts = extract_points_from_prediction(p) or []
             except Exception:
+                logger.debug("Failed to extract points from prediction", exc_info=True)
                 pts = []
 
             label_text = _normalize_label(label)
@@ -363,8 +370,10 @@ def parse_result_to_preds(result: Any) -> List[Dict[str, Any]]:
                 }
             )
         except Exception:
+            logger.warning("Skipping malformed prediction dict", exc_info=True)
             continue
 
+    logger.debug(f"parse_result_to_preds: parsed {len(out)} valid predictions")
     return out
 
 
@@ -384,12 +393,15 @@ def compute_aggregates(preds: List[Dict[str, Any]]) -> Dict[str, Any]:
             try:
                 min_conf = min(confidences)
             except Exception:
+                logger.debug("Could not compute min confidence")
                 min_conf = None
             try:
                 max_conf = max(confidences)
             except Exception:
+                logger.debug("Could not compute max confidence")
                 max_conf = None
     except Exception:
+        logger.warning("compute_aggregates: failed to compute confidence stats", exc_info=True)
         ave_conf = None
         min_conf = None
         max_conf = None
@@ -412,7 +424,7 @@ def compute_aggregates(preds: List[Dict[str, Any]]) -> Dict[str, Any]:
                         counts[k] += 1
                         break
     except Exception:
-        pass
+        logger.warning("compute_aggregates: failed to count classes", exc_info=True)
 
     return {
         "total": total,
