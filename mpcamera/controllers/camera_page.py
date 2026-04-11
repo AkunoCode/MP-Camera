@@ -134,6 +134,7 @@ class CameraPageController(QtCore.QObject):
         self._large_table_window: Optional[QtWidgets.QMainWindow] = None
         # Last parsed predictions (for viewDetails button)
         self._last_preds: List[Dict[str, Any]] = []
+        self._last_raw_result = None  # unfiltered inference output for slider re-use
 
         # --- Timers ---
         self._frame_timer = QtCore.QTimer()
@@ -412,13 +413,13 @@ class CameraPageController(QtCore.QObject):
         if ui["save_btn"] is not None:
             ui["save_btn"].clicked.connect(self._save_results)
 
-        # Sliders - Use sliderReleased to avoid re-running on every tick while dragging
+        # Sliders - Use sliderReleased to re-filter from cache (no new inference)
         if ui["conf_slider"] is not None:
-            ui["conf_slider"].sliderReleased.connect(self._on_param_changed)
+            ui["conf_slider"].sliderReleased.connect(self._refilter_from_cache)
             # Update label live as the slider moves
             ui["conf_slider"].valueChanged.connect(self._update_param_labels)
         if ui["iou_slider"] is not None:
-            ui["iou_slider"].sliderReleased.connect(self._on_param_changed)
+            ui["iou_slider"].sliderReleased.connect(self._refilter_from_cache)
             ui["iou_slider"].valueChanged.connect(self._update_param_labels)
         # Note: brightness/contrast sliders are initialized in _init_ui_defaults
         # so that their values are applied before the first _apply_adjustments_and_refresh call.
@@ -1521,6 +1522,9 @@ class CameraPageController(QtCore.QObject):
             if not preds:
                 return
 
+            # Cache raw result for slider re-filtering
+            self._last_raw_result = raw_result
+
             # Store last preds for view details
             try:
                 self._last_preds = preds or []
@@ -1558,6 +1562,39 @@ class CameraPageController(QtCore.QObject):
                 self._toggle_spinner(False)
             except Exception:
                 pass
+        except Exception:
+            pass
+
+    def _refilter_from_cache(self):
+        """Re-apply confidence/IoU filters on the cached raw result without re-running inference."""
+        if self._last_raw_result is None:
+            return
+
+        import copy
+        from mpcamera.utils.inference_utils import apply_confidence_iou_filters, parse_result_to_preds
+
+        conf_val = self.DEFAULT_CONFIDENCE
+        iou_val = self.DEFAULT_IOU
+        if self.ui.get("conf_slider") is not None:
+            conf_val = self.ui["conf_slider"].value() / 100.0
+        if self.ui.get("iou_slider") is not None:
+            iou_val = self.ui["iou_slider"].value() / 100.0
+
+        # Work on a deep copy so we don't mutate the cached raw result
+        filtered = copy.deepcopy(self._last_raw_result)
+        filtered = apply_confidence_iou_filters(
+            filtered, confidence_threshold=conf_val, iou_threshold=iou_val
+        )
+        preds = parse_result_to_preds(filtered) or []
+        self._last_preds = preds
+        self._update_table(preds)
+        self._update_stats(preds)
+        # Update overlays with filtered results
+        try:
+            if self.ui.get("cam_view") is not None:
+                scene = self.ui["cam_view"].scene()
+                if scene is not None:
+                    render_predictions_on_scene(scene, filtered)
         except Exception:
             pass
 
