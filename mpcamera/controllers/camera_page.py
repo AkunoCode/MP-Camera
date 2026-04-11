@@ -813,7 +813,7 @@ class CameraPageController(QtCore.QObject):
         """Open the large inference table window showing the last inference results."""
         try:
             if self._last_preds:
-                self._open_large_table_window(self._last_preds)
+                self._open_large_table_window(list(self._last_preds))  # snapshot, not live ref
             else:
                 QtWidgets.QMessageBox.information(
                     self.page, "No Results", "No inference results available."
