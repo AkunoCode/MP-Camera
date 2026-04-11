@@ -359,6 +359,7 @@ def parse_result_to_preds(result: Any) -> List[Dict[str, Any]]:
                     "color": color_hex,
                     "size": None,
                     "raw": p,
+                    "_cached_points": pts,  # Cache points to avoid re-extraction
                 }
             )
         except Exception:

@@ -13,9 +13,6 @@ from mpcamera.utils.morphometrics import (
     calculate_equivalent_circular_diameter,
     calculate_skeleton_length_um,
 )
-from mpcamera.utils.prediction_utils import extract_points_from_prediction
-
-
 class ResultsManager:
     """
     Handles the business logic for calculating metrics and uploading data
@@ -43,10 +40,10 @@ class ResultsManager:
 
         stats["um_per_px"] = um_per_px
 
-        # Extract points
+        # Extract points (use cached version if available)
         pts = (
-            pred.get("points")
-            or extract_points_from_prediction(pred.get("raw") or {})
+            pred.get("_cached_points")
+            or pred.get("points")
             or []
         )
 
