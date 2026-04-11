@@ -1,5 +1,9 @@
 import os
+import sys
+import logging
 from PyQt6 import uic, QtWidgets, QtCore, QtGui
+
+logger = logging.getLogger(__name__)
 from mpcamera.utils.results_manager import ResultsManager
 from mpcamera.utils.color_utils import get_color_name
 
@@ -84,13 +88,17 @@ class ResultsWindow(QtWidgets.QMainWindow):
         super().__init__(parent)
 
         # --- 1. Load UI File ---
-        ui_path = os.path.join(
-            os.path.dirname(__file__), "..", "layouts", "resultsWindow.ui"
-        )
+        # In a frozen PyInstaller app, use sys._MEIPASS as the base; otherwise use __file__.
+        if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+            ui_path = os.path.join(sys._MEIPASS, "mpcamera", "layouts", "resultsWindow.ui")
+        else:
+            ui_path = os.path.join(
+                os.path.dirname(__file__), "..", "layouts", "resultsWindow.ui"
+            )
         try:
             uic.loadUi(ui_path, self)
         except Exception as e:
-            print(f"Error loading UI: {e}")
+            logger.error(f"Error loading ResultsWindow UI from {ui_path}: {e}", exc_info=True)
             # Fallback resize if XML fails completely
             self.resize(1200, 700)
 
@@ -179,8 +187,8 @@ class ResultsWindow(QtWidgets.QMainWindow):
             self.table.insertRow(i)
 
             # --- A. Calculate Data ---
-            w = last_pixmap.width()
-            h = last_pixmap.height()
+            w = last_pixmap.width() if last_pixmap is not None else 1
+            h = last_pixmap.height() if last_pixmap is not None else 1
 
             # Use your utility class for math
             stats = ResultsManager.calculate_morphometrics(p, w, h, magnification=1.0)

@@ -411,7 +411,11 @@ class FarmPageController(QtCore.QObject):
         # 5. Threading
         def worker():
             try:
-                client = DirectusClient()
+                from mpcamera.config import get_settings
+                cfg = get_settings()
+                api_url = cfg.get("services", {}).get("directus", {}).get("api_url", "").strip()
+                bearer_token = cfg.get("services", {}).get("directus", {}).get("bearer_token", "").strip()
+                client = DirectusClient(api_url=api_url or None, bearer_token=bearer_token or None)
                 if mode == "create":
                     resp = client.create_site(payload)
                     self.signals.success.emit("create", resp)

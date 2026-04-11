@@ -2178,8 +2178,11 @@ class CameraPageController(QtCore.QObject):
         def worker():
             count = 0
             try:
-                # Initialize client inside the thread
-                client = DirectusClient()
+                # Initialize client inside the thread using config values
+                cfg = get_settings()
+                api_url = cfg.get("services", {}).get("directus", {}).get("api_url", "").strip()
+                bearer_token = cfg.get("services", {}).get("directus", {}).get("bearer_token", "").strip()
+                client = DirectusClient(api_url=api_url or None, bearer_token=bearer_token or None)
 
                 # Delegate heavy lifting to the new utility class
                 count = ResultsManager.process_upload(client, payloads, img_path)
