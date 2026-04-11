@@ -17,6 +17,7 @@ class RoboflowClient:
 
     _instance = None
     _lock = Lock()
+    _state_lock = Lock()  # Protects mutable instance state
 
     def __init__(self, api_url=None, api_key=None, workspace=None, workflow=None):
         settings = _get_roboflow_settings()
@@ -68,32 +69,33 @@ class RoboflowClient:
 
     def refresh_auth_from_settings(self) -> None:
         """Refresh API URL/key/workspace from env or settings."""
-        settings = _get_roboflow_settings()
+        with RoboflowClient._state_lock:
+            settings = _get_roboflow_settings()
 
-        new_api_url = (
-            os.getenv("ROBOFLOW_API_URL")
-            or settings.get("api_url")
-            or self.api_url
-        )
-        new_api_key = (
-            os.getenv("ROBOFLOW_API_KEY")
-            or settings.get("api_key")
-            or self.api_key
-        )
-        new_workspace = (
-            os.getenv("ROBOFLOW_WORKSPACE")
-            or settings.get("workspace")
-            or self.workspace
-        )
+            new_api_url = (
+                os.getenv("ROBOFLOW_API_URL")
+                or settings.get("api_url")
+                or self.api_url
+            )
+            new_api_key = (
+                os.getenv("ROBOFLOW_API_KEY")
+                or settings.get("api_key")
+                or self.api_key
+            )
+            new_workspace = (
+                os.getenv("ROBOFLOW_WORKSPACE")
+                or settings.get("workspace")
+                or self.workspace
+            )
 
-        api_changed = (new_api_url != self.api_url) or (new_api_key != self.api_key)
+            api_changed = (new_api_url != self.api_url) or (new_api_key != self.api_key)
 
-        self.api_url = new_api_url
-        self.api_key = new_api_key
-        self.workspace = new_workspace
+            self.api_url = new_api_url
+            self.api_key = new_api_key
+            self.workspace = new_workspace
 
-        if api_changed:
-            self._create_client()
+            if api_changed:
+                self._create_client()
 
     @classmethod
     def get_default(cls):
