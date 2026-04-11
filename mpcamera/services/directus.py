@@ -25,7 +25,8 @@ try:
     from dotenv import load_dotenv
 
     load_dotenv()
-except Exception:
+except Exception as _e:
+    logger.debug(f"dotenv not available in directus: {_e}")
     load_dotenv = None
 
 logger = logging.getLogger(__name__)
@@ -146,7 +147,7 @@ class DirectusClient:
             elif ext == ".gif":
                 mime = "image/gif"
         except Exception:
-            pass
+            logger.debug("Could not detect MIME type from extension; using image/png")
 
         with open(file_path, "rb") as fh:
             files = {"file": (filename, fh, mime)}
