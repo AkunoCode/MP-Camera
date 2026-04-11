@@ -3,630 +3,326 @@
  <class>layoutWidget</class>
  <widget class="QWidget" name="layoutWidget">
   <property name="geometry">
-   <rect>
-    <x>0</x>
-    <y>0</y>
-    <width>980</width>
-    <height>720</height>
-   </rect>
+   <rect><x>0</x><y>0</y><width>980</width><height>720</height></rect>
   </property>
   <property name="styleSheet">
-   <string notr="true">QWidget {
-    font-family: &quot;Inter&quot;;
+   <string notr="true">
+QWidget {
+    font-family: "Inter";
     font-size: 12pt;
 }
-
+QTabWidget::pane {
+    border: 1px solid #d0d0d0;
+    border-radius: 0 6px 6px 6px;
+    background: #ffffff;
+}
+QTabBar::tab {
+    background: #f0f0f0;
+    border: 1px solid #d0d0d0;
+    border-bottom: none;
+    padding: 8px 18px;
+    margin-right: 2px;
+    border-radius: 5px 5px 0 0;
+    font-size: 11pt;
+    color: #555555;
+}
+QTabBar::tab:selected {
+    background: #ffffff;
+    color: #111111;
+    font-weight: bold;
+    border-bottom: 1px solid #ffffff;
+}
+QTabBar::tab:hover:!selected {
+    background: #e0e0e0;
+}
 QPushButton {
     background-color: black;
     color: white;
     border-radius: 5px;
-	font-weight:bold;
+    font-weight: bold;
 }
-
-QPushButton[designClass=&quot;lightButton&quot;] {
-    background-color: white;
-    color: black;
-    border-radius: 5px;
-border: 1px solid black;
-font-weight:bold;
-}
-
-QFrame[designClass=&quot;inferenceCard&quot;]{
-background-color:white;
-border-radius:5px;
-border: 1px solid rgb(134, 134, 134);
-}
-
-/* Visually indicate disabled buttons (override default dark theme styles) */
 QPushButton:disabled {
     background-color: #dcdcdc;
     color: #7a7a7a;
     border: 1px solid #c0c0c0;
 }
-
-QPushButton[designClass=&quot;lightButton&quot;]:disabled {
-    background-color: #f5f5f5;
-    color: #9a9a9a;
-    border: 1px solid #d0d0d0;
+QPushButton[designClass="lightButton"] {
+    background-color: white;
+    color: black;
+    border-radius: 5px;
+    border: 1px solid black;
+    font-weight: bold;
 }
-
-
-/*-----------------SPIN BOX-------------------------------*/
-QDoubleSpinBox {
-    background-color: #ffffff;
-    border: 1px solid #d0d0d0;
-    border-radius: 6px;
-    padding: 6px 10px;
-    font-size: 13px;
-    color: #333333;
-}
-
-QDoubleSpinBox:hover {
-    border: 1px solid #a0a0a0;
-}
-
-QDoubleSpinBox:focus {
-    border: 1px solid #0078d4;
-}
-
-/* Remove the ugly default arrows styling */
-QDoubleSpinBox::up-button, 
-QDoubleSpinBox::down-button {
-    background: transparent;
-    border: none;
-    width: 20px;
-}
-
-/* Modern minimal up/down arrows */
-QDoubleSpinBox::up-arrow {
-    image: url(:/qt-project.org/styles/commonstyle/images/arrow-up-16.png);
-    width: 10px;
-    height: 10px;
-}
-
-QDoubleSpinBox::down-arrow {
-    image: url(:/qt-project.org/styles/commonstyle/images/arrow-down-16.png);
-    width: 10px;
-    height: 10px;
-}
-
-/* Dropdown-style popup for editing (if applicable) */
-QDoubleSpinBox QAbstractItemView {
-    background-color: #ffffff;
-    border: 1px solid #cfcfcf;
-    border-radius: 6px;
-    padding: 4px;
-    selection-background-color: #e6f2ff;
-}
-
-/*-----------------LINE EDIT----------------------------*/
-
 QLineEdit {
     background-color: #ffffff;
     border: 1px solid #d0d0d0;
     border-radius: 6px;
     padding: 6px 10px;
-    font-size: 13px;
+    font-size: 12pt;
     color: #333333;
-    selection-background-color: #cce4ff;  /* light blue text highlight */
 }
-
-QLineEdit:hover {
-    border: 1px solid #a0a0a0;
+QLineEdit:focus { border: 1px solid #0078d4; }
+QLineEdit:hover { border: 1px solid #a0a0a0; }
+QDoubleSpinBox, QSpinBox {
+    background-color: #ffffff;
+    border: 1px solid #d0d0d0;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 12pt;
+    color: #333333;
 }
-
-QLineEdit:focus {
-    border: 1px solid #0078d4; /* same focus blue as combobox */
-    outline: none;
-}
-</string>
+QDoubleSpinBox:focus, QSpinBox:focus { border: 1px solid #0078d4; }
+   </string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout_root">
+   <property name="spacing"><number>0</number></property>
+   <property name="leftMargin"><number>18</number></property>
+   <property name="topMargin"><number>18</number></property>
+   <property name="rightMargin"><number>18</number></property>
+   <property name="bottomMargin"><number>18</number></property>
    <item>
-    <layout class="QHBoxLayout" name="horizontalLayout">
-     <item>
-      <widget class="QScrollArea" name="leftScrollArea">
-       <property name="widgetResizable">
-        <bool>true</bool>
-       </property>
-       <widget class="QWidget" name="leftScrollAreaWidget">
-        <property name="geometry">
-         <rect>
-          <x>0</x>
-          <y>0</y>
-          <width>458</width>
-          <height>857</height>
-         </rect>
-        </property>
-        <layout class="QVBoxLayout" name="verticalLayout_left">
-         <property name="spacing">
-          <number>12</number>
-         </property>
-         <property name="leftMargin">
-          <number>18</number>
-         </property>
-         <property name="topMargin">
-          <number>18</number>
-         </property>
-         <property name="rightMargin">
-          <number>18</number>
-         </property>
-         <property name="bottomMargin">
-          <number>18</number>
-         </property>
-         <item>
-          <layout class="QVBoxLayout" name="cameraLayout">
-           <item>
-            <widget class="QLabel" name="cameraLabel">
-             <property name="styleSheet">
-              <string notr="true">QLabel { font-size: 18px; font-weight:bold; background-color:none; }</string>
-             </property>
-             <property name="text">
-              <string>Camera</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <layout class="QGridLayout" name="cameraGrid">
-             <item row="0" column="0">
-              <widget class="QLabel" name="label_res_w">
-               <property name="text">
-                <string>Resolution Width</string>
-               </property>
-              </widget>
-             </item>
-             <item row="0" column="1">
-              <widget class="QSpinBox" name="cameraResWidthSpin">
-               <property name="minimum">
-                <number>1</number>
-               </property>
-               <property name="maximum">
-                <number>10000</number>
-               </property>
-              </widget>
-             </item>
-             <item row="1" column="0">
-              <widget class="QLabel" name="label_res_h">
-               <property name="text">
-                <string>Resolution Height</string>
-               </property>
-              </widget>
-             </item>
-             <item row="1" column="1">
-              <widget class="QSpinBox" name="cameraResHeightSpin">
-               <property name="minimum">
-                <number>1</number>
-               </property>
-               <property name="maximum">
-                <number>10000</number>
-               </property>
-              </widget>
-             </item>
-             <item row="2" column="0">
-              <widget class="QLabel" name="label_fourcc">
-               <property name="text">
-                <string>FOURCC</string>
-               </property>
-              </widget>
-             </item>
-             <item row="2" column="1">
-              <widget class="QLineEdit" name="fourccLineEdit"/>
-             </item>
-             <item row="3" column="0">
-              <widget class="QLabel" name="label_force_dshow">
-               <property name="text">
-                <string>Force DirectShow (Windows)</string>
-               </property>
-              </widget>
-             </item>
-             <item row="3" column="1">
-              <widget class="QCheckBox" name="forceDirectShowCheck"/>
-             </item>
-            </layout>
-           </item>
-          </layout>
-         </item>
-         <item>
-          <layout class="QVBoxLayout" name="streamingLayout">
-           <item>
-            <widget class="QLabel" name="streamingLabel">
-             <property name="styleSheet">
-              <string notr="true">QLabel { font-size: 18px; font-weight:bold; }</string>
-             </property>
-             <property name="text">
-              <string>Streaming</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <layout class="QGridLayout" name="streamingGrid">
-             <item row="0" column="0">
-              <widget class="QLabel" name="label_frame_interval">
-               <property name="text">
-                <string>Frame Interval (ms)</string>
-               </property>
-              </widget>
-             </item>
-             <item row="0" column="1">
-              <widget class="QSpinBox" name="frameIntervalSpin">
-               <property name="minimum">
-                <number>1</number>
-               </property>
-               <property name="maximum">
-                <number>10000</number>
-               </property>
-              </widget>
-             </item>
-             <item row="1" column="0">
-              <widget class="QLabel" name="label_inference_interval">
-               <property name="text">
-                <string>Inference Interval (ms)</string>
-               </property>
-              </widget>
-             </item>
-             <item row="1" column="1">
-              <widget class="QSpinBox" name="inferenceIntervalSpin">
-               <property name="minimum">
-                <number>50</number>
-               </property>
-               <property name="maximum">
-                <number>60000</number>
-               </property>
-              </widget>
-             </item>
-            </layout>
-           </item>
-          </layout>
-         </item>
-         <item>
-          <layout class="QVBoxLayout" name="measurementLayout">
-           <item>
-            <widget class="QLabel" name="measurementLabel">
-             <property name="styleSheet">
-              <string notr="true">QLabel { font-size: 18px; font-weight:bold; }</string>
-             </property>
-             <property name="text">
-              <string>Measurement</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <layout class="QGridLayout" name="measurementGrid">
-             <item row="0" column="0">
-              <widget class="QLabel" name="label_sensor_w">
-               <property name="text">
-                <string>Sensor Width (mm)</string>
-               </property>
-              </widget>
-             </item>
-             <item row="0" column="1">
-              <widget class="QDoubleSpinBox" name="sensorWidthSpin">
-               <property name="decimals">
-                <number>4</number>
-               </property>
-               <property name="minimum">
-                <double>0.000100000000000</double>
-               </property>
-               <property name="maximum">
-                <double>1000.000000000000000</double>
-               </property>
-              </widget>
-             </item>
-             <item row="1" column="0">
-              <widget class="QLabel" name="label_sensor_h">
-               <property name="text">
-                <string>Sensor Height (mm)</string>
-               </property>
-              </widget>
-             </item>
-             <item row="1" column="1">
-              <widget class="QDoubleSpinBox" name="sensorHeightSpin">
-               <property name="decimals">
-                <number>4</number>
-               </property>
-               <property name="minimum">
-                <double>0.000100000000000</double>
-               </property>
-               <property name="maximum">
-                <double>1000.000000000000000</double>
-               </property>
-              </widget>
-             </item>
-             <item row="2" column="0">
-              <widget class="QLabel" name="label_default_mag">
-               <property name="text">
-                <string>Default Magnification</string>
-               </property>
-              </widget>
-             </item>
-             <item row="2" column="1">
-              <widget class="QDoubleSpinBox" name="defaultMagnificationSpin">
-               <property name="decimals">
-                <number>3</number>
-               </property>
-               <property name="minimum">
-                <double>0.010000000000000</double>
-               </property>
-               <property name="maximum">
-                <double>100.000000000000000</double>
-               </property>
-              </widget>
-             </item>
-            </layout>
-           </item>
-          </layout>
-         </item>
-         <item>
-          <layout class="QVBoxLayout" name="inferenceLayout">
-           <item>
-            <widget class="QLabel" name="inferenceLabel">
-             <property name="styleSheet">
-              <string notr="true">QLabel { font-size: 18px; font-weight:bold; }</string>
-             </property>
-             <property name="text">
-              <string>Inference</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <layout class="QGridLayout" name="inferenceGrid">
-             <item row="0" column="0">
-              <widget class="QLabel" name="label_def_conf">
-               <property name="text">
-                <string>Default Confidence</string>
-               </property>
-              </widget>
-             </item>
-             <item row="0" column="1">
-              <widget class="QDoubleSpinBox" name="defaultConfidenceSpin">
-               <property name="decimals">
-                <number>2</number>
-               </property>
-               <property name="minimum">
-                <double>0.000000000000000</double>
-               </property>
-               <property name="maximum">
-                <double>1.000000000000000</double>
-               </property>
-               <property name="singleStep">
-                <double>0.010000000000000</double>
-               </property>
-              </widget>
-             </item>
-             <item row="1" column="0">
-              <widget class="QLabel" name="label_def_iou">
-               <property name="text">
-                <string>Default IoU</string>
-               </property>
-              </widget>
-             </item>
-             <item row="1" column="1">
-              <widget class="QDoubleSpinBox" name="defaultIouSpin">
-               <property name="decimals">
-                <number>2</number>
-               </property>
-               <property name="minimum">
-                <double>0.000000000000000</double>
-               </property>
-               <property name="maximum">
-                <double>1.000000000000000</double>
-               </property>
-               <property name="singleStep">
-                <double>0.010000000000000</double>
-               </property>
-              </widget>
-             </item>
-            </layout>
-           </item>
-          </layout>
-         </item>
-         <item>
-          <layout class="QVBoxLayout" name="bcLayout">
-           <item>
-            <widget class="QLabel" name="bcLabel">
-             <property name="styleSheet">
-              <string notr="true">QLabel { font-size: 18px; font-weight:bold; }</string>
-             </property>
-             <property name="text">
-              <string>Brightness / Contrast</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <layout class="QGridLayout" name="bcGrid">
-             <item row="0" column="0">
-              <widget class="QLabel" name="label_b_default">
-               <property name="text">
-                <string>Brightness Default</string>
-               </property>
-              </widget>
-             </item>
-             <item row="0" column="1">
-              <widget class="QSpinBox" name="brightnessDefaultSpin">
-               <property name="minimum">
-                <number>0</number>
-               </property>
-               <property name="maximum">
-                <number>100</number>
-               </property>
-              </widget>
-             </item>
-             <item row="1" column="0">
-              <widget class="QLabel" name="label_c_default">
-               <property name="text">
-                <string>Contrast Default</string>
-               </property>
-              </widget>
-             </item>
-             <item row="1" column="1">
-              <widget class="QSpinBox" name="contrastDefaultSpin">
-               <property name="minimum">
-                <number>0</number>
-               </property>
-               <property name="maximum">
-                <number>100</number>
-               </property>
-              </widget>
-             </item>
-            </layout>
-           </item>
-          </layout>
-         </item>
-         <item>
-          <layout class="QVBoxLayout" name="modelsLayout">
-           <item>
-            <widget class="QLabel" name="modelsLabel">
-             <property name="styleSheet">
-              <string notr="true">QLabel { font-size: 18px; font-weight:bold; }</string>
-             </property>
-             <property name="text">
-              <string>Models</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <layout class="QGridLayout" name="modelsGrid">
-             <item row="0" column="0">
-              <widget class="QLabel" name="label_local_dir">
-               <property name="text">
-                <string>Local Models Dir</string>
-               </property>
-              </widget>
-             </item>
-             <item row="0" column="1">
-              <widget class="QLineEdit" name="localModelsDirLine"/>
-             </item>
-             <item row="1" column="0">
-              <widget class="QLabel" name="label_prefer_local">
-               <property name="text">
-                <string>Prefer Local Models</string>
-               </property>
-              </widget>
-             </item>
-             <item row="1" column="1">
-              <widget class="QCheckBox" name="preferLocalCheck"/>
-             </item>
-            </layout>
-           </item>
-          </layout>
-         </item>
-         <item>
-          <layout class="QVBoxLayout" name="servicesLayout">
-           <item>
-            <widget class="QLabel" name="servicesLabel">
-             <property name="styleSheet">
-              <string notr="true">QLabel { font-size: 18px; font-weight:bold; }</string>
-             </property>
-             <property name="text">
-              <string>Services / API Keys</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <layout class="QGridLayout" name="servicesGrid">
-             <item row="0" column="0">
-              <widget class="QLabel" name="label_rf_key">
-               <property name="text">
-                <string>Roboflow API Key</string>
-               </property>
-              </widget>
-             </item>
-             <item row="0" column="1">
-              <widget class="QLineEdit" name="roboflowApiKeyLine">
-               <property name="echoMode">
-                <enum>QLineEdit::Password</enum>
-               </property>
-              </widget>
-             </item>
-             <item row="1" column="0">
-              <widget class="QLabel" name="label_directus">
-               <property name="text">
-                <string>Directus Bearer Token</string>
-               </property>
-              </widget>
-             </item>
-             <item row="1" column="1">
-              <widget class="QLineEdit" name="directusBearerLine">
-               <property name="echoMode">
-                <enum>QLineEdit::Password</enum>
-               </property>
-              </widget>
-             </item>
-            </layout>
-           </item>
-          </layout>
-         </item>
-        </layout>
-       </widget>
-      </widget>
-     </item>
-     <item>
-      <layout class="QVBoxLayout" name="verticalLayout_right">
-       <property name="leftMargin">
-        <number>12</number>
-       </property>
-       <property name="topMargin">
-        <number>12</number>
-       </property>
-       <property name="rightMargin">
-        <number>12</number>
-       </property>
-       <property name="bottomMargin">
-        <number>12</number>
-       </property>
-       <item>
-        <widget class="QLabel" name="titleLabel">
-         <property name="styleSheet">
-          <string notr="true">QLabel { font-size: 22px; font-weight:bold; }</string>
-         </property>
-         <property name="text">
-          <string>Application Settings</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QTextEdit" name="notesText">
-         <property name="readOnly">
-          <bool>true</bool>
-         </property>
-         <property name="plainText">
-          <string>Adjust application defaults. Changes are saved when you press &quot;Save Settings&quot;.</string>
-         </property>
-        </widget>
-       </item>
-      </layout>
-     </item>
-    </layout>
+    <widget class="QLabel" name="titleLabel">
+     <property name="styleSheet"><string notr="true">QLabel { font-size: 20px; font-weight: bold; margin-bottom: 8px; }</string></property>
+     <property name="text"><string>Application Settings</string></property>
+    </widget>
    </item>
    <item>
-    <layout class="QHBoxLayout" name="bottomLayout">
-     <item>
-      <spacer name="horizontalSpacer_bottom">
-       <property name="orientation">
-        <enum>Qt::Horizontal</enum>
-       </property>
-       <property name="sizeHint" stdset="0">
-        <size>
-         <width>40</width>
-         <height>20</height>
-        </size>
-       </property>
-      </spacer>
-     </item>
-     <item>
-      <widget class="QPushButton" name="saveSettingsButton">
-       <property name="minimumSize">
-        <size>
-         <width>140</width>
-         <height>40</height>
-        </size>
-       </property>
-       <property name="text">
-        <string>Save Settings</string>
-       </property>
-      </widget>
-     </item>
-    </layout>
+    <widget class="QTabWidget" name="settingsTabWidget">
+     <property name="currentIndex"><number>0</number></property>
+
+     <!-- TAB 1: Camera -->
+     <widget class="QWidget" name="cameraTab">
+      <attribute name="title"><string>Camera</string></attribute>
+      <layout class="QVBoxLayout">
+       <property name="leftMargin"><number>20</number></property>
+       <property name="topMargin"><number>20</number></property>
+       <property name="rightMargin"><number>20</number></property>
+       <property name="bottomMargin"><number>20</number></property>
+       <item>
+        <layout class="QGridLayout" name="cameraGrid">
+         <property name="verticalSpacing"><number>10</number></property>
+         <item row="0" column="0"><widget class="QLabel" name="label_res_w"><property name="text"><string>Resolution Width</string></property></widget></item>
+         <item row="0" column="1"><widget class="QSpinBox" name="cameraResWidthSpin"><property name="minimum"><number>1</number></property><property name="maximum"><number>10000</number></property></widget></item>
+         <item row="1" column="0"><widget class="QLabel" name="label_res_h"><property name="text"><string>Resolution Height</string></property></widget></item>
+         <item row="1" column="1"><widget class="QSpinBox" name="cameraResHeightSpin"><property name="minimum"><number>1</number></property><property name="maximum"><number>10000</number></property></widget></item>
+         <item row="2" column="0"><widget class="QLabel" name="label_fourcc"><property name="text"><string>FOURCC</string></property></widget></item>
+         <item row="2" column="1"><widget class="QLineEdit" name="fourccLineEdit"/></item>
+         <item row="3" column="0"><widget class="QLabel" name="label_force_dshow"><property name="text"><string>Force DirectShow (Windows)</string></property></widget></item>
+         <item row="3" column="1"><widget class="QCheckBox" name="forceDirectShowCheck"/></item>
+        </layout>
+       </item>
+       <item><spacer><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
+       <item>
+        <layout class="QHBoxLayout">
+         <item><spacer><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+         <item><widget class="QPushButton" name="saveSettingsButton"><property name="minimumSize"><size><width>140</width><height>40</height></size></property><property name="text"><string>Save Settings</string></property></widget></item>
+        </layout>
+       </item>
+      </layout>
+     </widget>
+
+     <!-- TAB 2: Streaming -->
+     <widget class="QWidget" name="streamingTab">
+      <attribute name="title"><string>Streaming</string></attribute>
+      <layout class="QVBoxLayout">
+       <property name="leftMargin"><number>20</number></property>
+       <property name="topMargin"><number>20</number></property>
+       <property name="rightMargin"><number>20</number></property>
+       <property name="bottomMargin"><number>20</number></property>
+       <item>
+        <layout class="QGridLayout" name="streamingGrid">
+         <property name="verticalSpacing"><number>10</number></property>
+         <item row="0" column="0"><widget class="QLabel" name="label_frame_interval"><property name="text"><string>Frame Interval (ms)</string></property></widget></item>
+         <item row="0" column="1"><widget class="QSpinBox" name="frameIntervalSpin"><property name="minimum"><number>1</number></property><property name="maximum"><number>10000</number></property></widget></item>
+         <item row="1" column="0"><widget class="QLabel" name="label_inference_interval"><property name="text"><string>Inference Interval (ms)</string></property></widget></item>
+         <item row="1" column="1"><widget class="QSpinBox" name="inferenceIntervalSpin"><property name="minimum"><number>50</number></property><property name="maximum"><number>60000</number></property></widget></item>
+        </layout>
+       </item>
+       <item><spacer><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
+       <item>
+        <layout class="QHBoxLayout">
+         <item><spacer><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+         <item><widget class="QPushButton" name="saveSettingsButton_2"><property name="minimumSize"><size><width>140</width><height>40</height></size></property><property name="text"><string>Save Settings</string></property></widget></item>
+        </layout>
+       </item>
+      </layout>
+     </widget>
+
+     <!-- TAB 3: Measurement -->
+     <widget class="QWidget" name="measurementTab">
+      <attribute name="title"><string>Measurement</string></attribute>
+      <layout class="QVBoxLayout">
+       <property name="leftMargin"><number>20</number></property>
+       <property name="topMargin"><number>20</number></property>
+       <property name="rightMargin"><number>20</number></property>
+       <property name="bottomMargin"><number>20</number></property>
+       <item>
+        <layout class="QGridLayout" name="measurementGrid">
+         <property name="verticalSpacing"><number>10</number></property>
+         <item row="0" column="0"><widget class="QLabel" name="label_sensor_w"><property name="text"><string>Sensor Width (mm)</string></property></widget></item>
+         <item row="0" column="1"><widget class="QDoubleSpinBox" name="sensorWidthSpin"><property name="decimals"><number>4</number></property><property name="minimum"><double>0.0001</double></property><property name="maximum"><double>1000.0</double></property></widget></item>
+         <item row="1" column="0"><widget class="QLabel" name="label_sensor_h"><property name="text"><string>Sensor Height (mm)</string></property></widget></item>
+         <item row="1" column="1"><widget class="QDoubleSpinBox" name="sensorHeightSpin"><property name="decimals"><number>4</number></property><property name="minimum"><double>0.0001</double></property><property name="maximum"><double>1000.0</double></property></widget></item>
+         <item row="2" column="0"><widget class="QLabel" name="label_default_mag"><property name="text"><string>Default Magnification</string></property></widget></item>
+         <item row="2" column="1"><widget class="QDoubleSpinBox" name="defaultMagnificationSpin"><property name="decimals"><number>3</number></property><property name="minimum"><double>0.01</double></property><property name="maximum"><double>100.0</double></property></widget></item>
+        </layout>
+       </item>
+       <item><spacer><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
+       <item>
+        <layout class="QHBoxLayout">
+         <item><spacer><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+         <item><widget class="QPushButton" name="saveSettingsButton_3"><property name="minimumSize"><size><width>140</width><height>40</height></size></property><property name="text"><string>Save Settings</string></property></widget></item>
+        </layout>
+       </item>
+      </layout>
+     </widget>
+
+     <!-- TAB 4: Inference -->
+     <widget class="QWidget" name="inferenceTab">
+      <attribute name="title"><string>Inference</string></attribute>
+      <layout class="QVBoxLayout">
+       <property name="leftMargin"><number>20</number></property>
+       <property name="topMargin"><number>20</number></property>
+       <property name="rightMargin"><number>20</number></property>
+       <property name="bottomMargin"><number>20</number></property>
+       <item>
+        <layout class="QGridLayout" name="inferenceGrid">
+         <property name="verticalSpacing"><number>10</number></property>
+         <item row="0" column="0"><widget class="QLabel" name="label_def_conf"><property name="text"><string>Default Confidence</string></property></widget></item>
+         <item row="0" column="1"><widget class="QDoubleSpinBox" name="defaultConfidenceSpin"><property name="decimals"><number>2</number></property><property name="minimum"><double>0.0</double></property><property name="maximum"><double>1.0</double></property><property name="singleStep"><double>0.01</double></property></widget></item>
+         <item row="1" column="0"><widget class="QLabel" name="label_def_iou"><property name="text"><string>Default IoU</string></property></widget></item>
+         <item row="1" column="1"><widget class="QDoubleSpinBox" name="defaultIouSpin"><property name="decimals"><number>2</number></property><property name="minimum"><double>0.0</double></property><property name="maximum"><double>1.0</double></property><property name="singleStep"><double>0.01</double></property></widget></item>
+        </layout>
+       </item>
+       <item><spacer><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
+       <item>
+        <layout class="QHBoxLayout">
+         <item><spacer><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+         <item><widget class="QPushButton" name="saveSettingsButton_4"><property name="minimumSize"><size><width>140</width><height>40</height></size></property><property name="text"><string>Save Settings</string></property></widget></item>
+        </layout>
+       </item>
+      </layout>
+     </widget>
+
+     <!-- TAB 5: Display -->
+     <widget class="QWidget" name="displayTab">
+      <attribute name="title"><string>Display</string></attribute>
+      <layout class="QVBoxLayout">
+       <property name="leftMargin"><number>20</number></property>
+       <property name="topMargin"><number>20</number></property>
+       <property name="rightMargin"><number>20</number></property>
+       <property name="bottomMargin"><number>20</number></property>
+       <item>
+        <layout class="QGridLayout" name="bcGrid">
+         <property name="verticalSpacing"><number>10</number></property>
+         <item row="0" column="0"><widget class="QLabel" name="label_b_default"><property name="text"><string>Brightness Default</string></property></widget></item>
+         <item row="0" column="1"><widget class="QSpinBox" name="brightnessDefaultSpin"><property name="minimum"><number>0</number></property><property name="maximum"><number>100</number></property></widget></item>
+         <item row="1" column="0"><widget class="QLabel" name="label_c_default"><property name="text"><string>Contrast Default</string></property></widget></item>
+         <item row="1" column="1"><widget class="QSpinBox" name="contrastDefaultSpin"><property name="minimum"><number>0</number></property><property name="maximum"><number>100</number></property></widget></item>
+        </layout>
+       </item>
+       <item><spacer><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
+       <item>
+        <layout class="QHBoxLayout">
+         <item><spacer><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+         <item><widget class="QPushButton" name="saveSettingsButton_5"><property name="minimumSize"><size><width>140</width><height>40</height></size></property><property name="text"><string>Save Settings</string></property></widget></item>
+        </layout>
+       </item>
+      </layout>
+     </widget>
+
+     <!-- TAB 6: Models -->
+     <widget class="QWidget" name="modelsTab">
+      <attribute name="title"><string>Models</string></attribute>
+      <layout class="QVBoxLayout">
+       <property name="leftMargin"><number>20</number></property>
+       <property name="topMargin"><number>20</number></property>
+       <property name="rightMargin"><number>20</number></property>
+       <property name="bottomMargin"><number>20</number></property>
+       <item>
+        <layout class="QGridLayout" name="modelsGrid">
+         <property name="verticalSpacing"><number>10</number></property>
+         <item row="0" column="0"><widget class="QLabel" name="label_local_dir"><property name="text"><string>Local Models Dir</string></property></widget></item>
+         <item row="0" column="1"><widget class="QLineEdit" name="localModelsDirLine"/></item>
+         <item row="1" column="0"><widget class="QLabel" name="label_prefer_local"><property name="text"><string>Prefer Local Models</string></property></widget></item>
+         <item row="1" column="1"><widget class="QCheckBox" name="preferLocalCheck"/></item>
+        </layout>
+       </item>
+       <item><spacer><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
+       <item>
+        <layout class="QHBoxLayout">
+         <item><spacer><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+         <item><widget class="QPushButton" name="saveSettingsButton_6"><property name="minimumSize"><size><width>140</width><height>40</height></size></property><property name="text"><string>Save Settings</string></property></widget></item>
+        </layout>
+       </item>
+      </layout>
+     </widget>
+
+     <!-- TAB 7: Services -->
+     <widget class="QWidget" name="servicesTab">
+      <attribute name="title"><string>Services</string></attribute>
+      <layout class="QVBoxLayout">
+       <property name="leftMargin"><number>20</number></property>
+       <property name="topMargin"><number>20</number></property>
+       <property name="rightMargin"><number>20</number></property>
+       <property name="bottomMargin"><number>20</number></property>
+       <item>
+        <widget class="QLabel" name="roboflowGroupLabel">
+         <property name="styleSheet"><string notr="true">QLabel { font-size: 13pt; font-weight: bold; color: #111; border-bottom: 1px solid #ddd; padding-bottom: 4px; }</string></property>
+         <property name="text"><string>Roboflow</string></property>
+        </widget>
+       </item>
+       <item>
+        <layout class="QGridLayout" name="roboflowGrid">
+         <property name="verticalSpacing"><number>10</number></property>
+         <item row="0" column="0"><widget class="QLabel" name="label_rf_key"><property name="text"><string>API Key</string></property></widget></item>
+         <item row="0" column="1">
+          <layout class="QHBoxLayout">
+           <item><widget class="QLineEdit" name="roboflowApiKeyLine"><property name="echoMode"><enum>QLineEdit::Password</enum></property></widget></item>
+           <item><widget class="QPushButton" name="roboflowApiKeyToggle"><property name="text"><string>Show</string></property><property name="maximumWidth"><number>60</number></property><property name="styleSheet"><string notr="true">QPushButton { background: #eeeeee; color: #333; border: 1px solid #ccc; border-radius: 4px; font-weight: normal; } QPushButton:hover { background: #e0e0e0; }</string></property></widget></item>
+          </layout>
+         </item>
+         <item row="1" column="0"><widget class="QLabel" name="label_rf_url"><property name="text"><string>API URL</string></property></widget></item>
+         <item row="1" column="1"><widget class="QLineEdit" name="roboflowApiUrlLine"/></item>
+         <item row="2" column="0"><widget class="QLabel" name="label_rf_workspace"><property name="text"><string>Workspace</string></property></widget></item>
+         <item row="2" column="1"><widget class="QLineEdit" name="roboflowWorkspaceLine"/></item>
+         <item row="3" column="0"><widget class="QLabel" name="label_rf_workflow"><property name="text"><string>Workflow</string></property></widget></item>
+         <item row="3" column="1"><widget class="QLineEdit" name="roboflowWorkflowLine"/></item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QLabel" name="directusGroupLabel">
+         <property name="styleSheet"><string notr="true">QLabel { font-size: 13pt; font-weight: bold; color: #111; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-top: 10px; }</string></property>
+         <property name="text"><string>Directus</string></property>
+        </widget>
+       </item>
+       <item>
+        <layout class="QGridLayout" name="directusGrid">
+         <property name="verticalSpacing"><number>10</number></property>
+         <item row="0" column="0"><widget class="QLabel" name="label_directus_url"><property name="text"><string>API URL</string></property></widget></item>
+         <item row="0" column="1"><widget class="QLineEdit" name="directusApiUrlLine"/></item>
+         <item row="1" column="0"><widget class="QLabel" name="label_directus"><property name="text"><string>Bearer Token</string></property></widget></item>
+         <item row="1" column="1">
+          <layout class="QHBoxLayout">
+           <item><widget class="QLineEdit" name="directusBearerLine"><property name="echoMode"><enum>QLineEdit::Password</enum></property></widget></item>
+           <item><widget class="QPushButton" name="directusBearerToggle"><property name="text"><string>Show</string></property><property name="maximumWidth"><number>60</number></property><property name="styleSheet"><string notr="true">QPushButton { background: #eeeeee; color: #333; border: 1px solid #ccc; border-radius: 4px; font-weight: normal; } QPushButton:hover { background: #e0e0e0; }</string></property></widget></item>
+          </layout>
+         </item>
+         <item row="2" column="0"><widget class="QLabel" name="label_directus_timeout"><property name="text"><string>Timeout (s)</string></property></widget></item>
+         <item row="2" column="1"><widget class="QSpinBox" name="directusTimeoutSpin"><property name="minimum"><number>1</number></property><property name="maximum"><number>300</number></property></widget></item>
+        </layout>
+       </item>
+       <item><spacer><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
+       <item>
+        <layout class="QHBoxLayout">
+         <item><spacer><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+         <item><widget class="QPushButton" name="saveSettingsButton_7"><property name="minimumSize"><size><width>140</width><height>40</height></size></property><property name="text"><string>Save Settings</string></property></widget></item>
+        </layout>
+       </item>
+      </layout>
+     </widget>
+
+    </widget>
    </item>
   </layout>
  </widget>
