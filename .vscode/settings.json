@@ -1,0 +1,33 @@
+{
+  "hookExecutionDir": ".",
+  "hooks": {
+    "pre-commit": [
+      {
+        "glob": "mpcamera/**/*.py",
+        "name": "Run pytest",
+        "command": "python -m pytest tests/ -q --tb=short"
+      },
+      {
+        "glob": "mpcamera/**/*.py",
+        "name": "Check for hardcoded secrets",
+        "command": "! grep -r 'API_KEY\\|api_key\\|PASSWORD\\|password\\|TOKEN\\|token' mpcamera/ --include='*.py' | grep -v '.pyc' || echo 'No hardcoded secrets found'"
+      },
+      {
+        "glob": "SoilSight.spec",
+        "name": "Validate PyInstaller spec",
+        "command": "python -c \"import ast; ast.parse(open('SoilSight.spec').read()); print('PyInstaller spec is valid')\""
+      }
+    ],
+    "post-checkout": [
+      {
+        "command": "test requirements.txt -nt .venv311/pyvenv.cfg 2>/dev/null && echo 'Installing dependencies...' && pip install -r requirements.txt || echo 'Dependencies are up to date'"
+      }
+    ]
+  },
+  "[python]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "ms-python.python"
+  },
+  "python.linting.enabled": true,
+  "python.linting.pylintEnabled": true
+}

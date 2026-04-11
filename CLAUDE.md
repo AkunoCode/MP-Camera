@@ -97,3 +97,34 @@ python -m pytest tests/ -v
 - **Never hand Qt GUI objects (QPixmap, QImage) to worker threads** — convert to numpy/bytes on the main thread first.
 - **`.ui` files**: Do not hand-edit XML in `mpcamera/layouts/`; use Qt Designer only.
 - **36 identified issues** (19 high severity) catalogued in `docs/optimization-analysis.md` — consult before touching threading, NMS, or camera capture code.
+
+## Development Rules
+
+### Logging & Error Handling
+- **All errors must be logged**, never silent `except pass`. Use `logger.error()` with `exc_info=True` for full tracebacks.
+- Packaged app debug logs go to `~/.mpcamera/debug.log` (set up in `main.py`).
+- Use `import logging; logger = logging.getLogger(__name__)` in all modules that need error tracking.
+
+### API Credentials
+- **Never print API keys** in logs or console output. Use `logger.debug()` with only non-sensitive parts (e.g., endpoint, not token).
+- API credentials are stored in `~/.mpcamera/config.json` and can be synced from `.env` via `sync_env_to_config()`.
+- Environment variables only supplement config.json, never replace it entirely.
+
+### Directus Data Loading
+- Directus data (sites, soilsamples) is fetched on app startup in a background thread by `ui_nav.py:_start_directus_fetch()`.
+- The fetch emits `MainWindow.dataLoaded` signal when complete; controllers listen for this to populate UI.
+- Always wrap Directus API calls in try/except and log both success and failure.
+
+### PyInstaller & Packaging
+- **Always test locally**: Run `./build/build_mac.sh` and install the `.dmg` before pushing a release tag.
+- Debug the packaged app by checking `~/.mpcamera/debug.log` after running it.
+- If packaging fails, check `SoilSight.spec` for missing hidden imports or data files.
+- Sensitive files (`.env`, `models/`) are intentionally excluded from the bundle.
+
+## Release Process
+
+1. **Local test**: Run `./build/build_mac.sh` and test the generated DMG
+2. **Check logs**: Verify `~/.mpcamera/debug.log` shows no ERROR level entries
+3. **Tag and push**: `git tag vX.Y.Z && git push origin vX.Y.Z`
+4. **Monitor CI**: Watch https://github.com/AkunoCode/MP-Camera/actions for build completion
+5. **Verify assets**: Confirm release has both `SoilSight-X.Y.Z-mac.dmg` and `SoilSight-X.Y.Z-windows-setup.exe`
