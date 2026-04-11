@@ -132,7 +132,7 @@ def set_settings(settings: Settings) -> None:
 
 
 def sync_env_to_config() -> None:
-    """Read API URLs from .env file and sync to config.json if they're set."""
+    """Read API URLs and keys from .env file and sync to config.json if they're set."""
     import os
     from dotenv import load_dotenv
 
@@ -160,12 +160,26 @@ def sync_env_to_config() -> None:
             # Only override if empty or still default
             cfg["services"]["roboflow"]["api_url"] = rf_url.strip()
 
+    # Sync Roboflow API Key
+    rf_key = os.getenv("ROBOFLOW_API_KEY")
+    if rf_key and rf_key.strip():
+        if not cfg.get("services", {}).get("roboflow", {}).get("api_key"):
+            # Only override if empty
+            cfg["services"]["roboflow"]["api_key"] = rf_key.strip()
+
     # Sync Directus API URL
     du_url = os.getenv("DIRECTUS_API_URL")
     if du_url and du_url.strip():
         if not cfg.get("services", {}).get("directus", {}).get("api_url"):
             # Only override if empty
             cfg["services"]["directus"]["api_url"] = du_url.strip()
+
+    # Sync Directus Bearer Token
+    du_token = os.getenv("DIRECTUS_BEARER_TOKEN")
+    if du_token and du_token.strip():
+        if not cfg.get("services", {}).get("directus", {}).get("bearer_token"):
+            # Only override if empty
+            cfg["services"]["directus"]["bearer_token"] = du_token.strip()
 
     # Save updated config
     try:

@@ -25,6 +25,7 @@ class SettingsPageController:
         try:
             self._wire()
             self.load_values()
+            self._validate_and_warn()
         except Exception:
             traceback.print_exc()
 
@@ -38,6 +39,39 @@ class SettingsPageController:
         # Show/Hide toggles for sensitive fields
         self._wire_toggle("roboflowApiKeyToggle", "roboflowApiKeyLine")
         self._wire_toggle("directusBearerToggle", "directusBearerLine")
+
+    def _validate_and_warn(self):
+        """Check for missing critical API keys and warn user."""
+        try:
+            cfg = get_settings()
+        except Exception:
+            return
+
+        missing = []
+
+        # Check Roboflow API key
+        try:
+            rf_key = cfg.services.roboflow.api_key
+            if not rf_key or not str(rf_key).strip():
+                missing.append("Roboflow API Key")
+        except Exception:
+            missing.append("Roboflow API Key")
+
+        # Check Directus Bearer Token
+        try:
+            du_token = cfg.services.directus.bearer_token
+            if not du_token or not str(du_token).strip():
+                missing.append("Directus Bearer Token")
+        except Exception:
+            missing.append("Directus Bearer Token")
+
+        if missing:
+            msg = f"⚠️  Missing required API credentials:\n\n" + "\n".join(f"  • {item}" for item in missing) + \
+                  "\n\nPlease configure these in the Services tab before using inference features."
+            try:
+                QtWidgets.QMessageBox.warning(self.page, "Missing API Credentials", msg)
+            except Exception:
+                print(msg)
 
     def _wire_toggle(self, btn_name: str, line_name: str):
         btn = self.page.findChild(QtWidgets.QPushButton, btn_name)
