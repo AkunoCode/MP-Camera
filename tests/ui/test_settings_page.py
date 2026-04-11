@@ -35,6 +35,7 @@ def _make_page(qapp):
         "roboflowApiKeyToggle",
         "directusBearerToggle",
     ]
+    password_line_names = ["roboflowApiKeyLine", "directusBearerLine"]
 
     for name in spin_names:
         w = QtWidgets.QDoubleSpinBox(page)
@@ -43,6 +44,8 @@ def _make_page(qapp):
     for name in line_names:
         w = QtWidgets.QLineEdit(page)
         w.setObjectName(name)
+        if name in password_line_names:
+            w.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
     for name in check_names:
         w = QtWidgets.QCheckBox(page)
         w.setObjectName(name)
@@ -143,9 +146,9 @@ class TestSettingsPageControllerSave:
         with patch("mpcamera.controllers.settings_page.get_settings", return_value=cfg):
             from mpcamera.controllers.settings_page import SettingsPageController
             ctrl = SettingsPageController(page, MagicMock())
-        w = page.findChild(QtWidgets.QLineEdit, "roboflowApiUrlLine")
-        w.setText("http://newserver:9001")
-        ctrl._on_save_clicked()
+            w = page.findChild(QtWidgets.QLineEdit, "roboflowApiUrlLine")
+            w.setText("http://newserver:9001")
+            ctrl._on_save_clicked()
         assert cfg["services"]["roboflow"]["api_url"] == "http://newserver:9001"
 
     def test_saves_directus_timeout(self, qapp):
@@ -155,9 +158,9 @@ class TestSettingsPageControllerSave:
         with patch("mpcamera.controllers.settings_page.get_settings", return_value=cfg):
             from mpcamera.controllers.settings_page import SettingsPageController
             ctrl = SettingsPageController(page, MagicMock())
-        w = page.findChild(QtWidgets.QDoubleSpinBox, "directusTimeoutSpin")
-        w.setValue(60)
-        ctrl._on_save_clicked()
+            w = page.findChild(QtWidgets.QDoubleSpinBox, "directusTimeoutSpin")
+            w.setValue(60)
+            ctrl._on_save_clicked()
         assert cfg["services"]["directus"]["timeout_seconds"] == 60
 
 

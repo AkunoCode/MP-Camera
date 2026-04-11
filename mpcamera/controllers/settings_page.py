@@ -5,7 +5,18 @@ from mpcamera.config import get_settings
 
 
 class SettingsPageController:
-    """Controller to manage the Settings page UI: load values from config and save them."""
+    """Controller for the Settings page: load values from config and save them."""
+
+    # All Save button names across tabs
+    _SAVE_BUTTONS = [
+        "saveSettingsButton",
+        "saveSettingsButton_2",
+        "saveSettingsButton_3",
+        "saveSettingsButton_4",
+        "saveSettingsButton_5",
+        "saveSettingsButton_6",
+        "saveSettingsButton_7",
+    ]
 
     def __init__(self, page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
         self.page = page
@@ -18,13 +29,32 @@ class SettingsPageController:
             traceback.print_exc()
 
     def _wire(self):
-        # Connect Save button
-        try:
-            btn = self.page.findChild(QtWidgets.QPushButton, "saveSettingsButton")
+        # Connect all Save buttons (one per tab, all call same handler)
+        for btn_name in self._SAVE_BUTTONS:
+            btn = self.page.findChild(QtWidgets.QPushButton, btn_name)
             if btn is not None:
                 btn.clicked.connect(self._on_save_clicked)
-        except Exception:
-            pass
+
+        # Show/Hide toggles for sensitive fields
+        self._wire_toggle("roboflowApiKeyToggle", "roboflowApiKeyLine")
+        self._wire_toggle("directusBearerToggle", "directusBearerLine")
+
+    def _wire_toggle(self, btn_name: str, line_name: str):
+        btn = self.page.findChild(QtWidgets.QPushButton, btn_name)
+        line = self.page.findChild(QtWidgets.QLineEdit, line_name)
+        if btn is None or line is None:
+            return
+
+        def toggle():
+            hidden = line.echoMode() == QtWidgets.QLineEdit.EchoMode.Password
+            line.setEchoMode(
+                QtWidgets.QLineEdit.EchoMode.Normal
+                if hidden
+                else QtWidgets.QLineEdit.EchoMode.Password
+            )
+            btn.setText("Hide" if hidden else "Show")
+
+        btn.clicked.connect(toggle)
 
     def load_values(self):
         """Load values from settings into the UI widgets."""
@@ -33,113 +63,89 @@ class SettingsPageController:
         except Exception:
             cfg = None
 
-        def set_if(widget_name, value, setter="setValue"):
-            try:
-                w = self.page.findChild(QtWidgets.QWidget, widget_name)
-                if w is None:
-                    return
-                if setter == "setText":
+        def set_text(widget_name, value):
+            w = self.page.findChild(QtWidgets.QWidget, widget_name)
+            if w is not None:
+                try:
                     w.setText(str(value))
-                elif setter == "setChecked":
-                    w.setChecked(bool(value))
-                else:
-                    # default: setValue
+                except Exception:
+                    pass
+
+        def set_value(widget_name, value):
+            w = self.page.findChild(QtWidgets.QWidget, widget_name)
+            if w is not None:
+                try:
+                    w.setValue(value)
+                except Exception:
                     try:
-                        w.setValue(value)
+                        w.setText(str(value))
                     except Exception:
-                        # fallback for line edit
-                        try:
-                            w.setText(str(value))
-                        except Exception:
-                            pass
-            except Exception:
-                pass
+                        pass
 
-        # Camera
-        if cfg:
-            try:
-                set_if("cameraResWidthSpin", int(cfg.camera.resolution_width))
-                set_if("cameraResHeightSpin", int(cfg.camera.resolution_height))
-                set_if("fourccLineEdit", cfg.camera.fourcc, setter="setText")
-                set_if(
-                    "forceDirectShowCheck",
-                    bool(cfg.camera.force_directshow),
-                    setter="setChecked",
-                )
-            except Exception:
-                pass
+        def set_checked(widget_name, value):
+            w = self.page.findChild(QtWidgets.QWidget, widget_name)
+            if w is not None:
+                try:
+                    w.setChecked(bool(value))
+                except Exception:
+                    pass
 
-            # Streaming
-            try:
-                set_if("frameIntervalSpin", int(cfg.streaming.frame_interval_ms))
-                set_if(
-                    "inferenceIntervalSpin", int(cfg.streaming.inference_interval_ms)
-                )
-            except Exception:
-                pass
+        if not cfg:
+            return
 
-            # Measurement
-            try:
-                set_if(
-                    "sensorWidthSpin", float(cfg.measurement.effective_sensor_width_mm)
-                )
-                set_if(
-                    "sensorHeightSpin",
-                    float(cfg.measurement.effective_sensor_height_mm),
-                )
-                set_if(
-                    "defaultMagnificationSpin",
-                    float(cfg.measurement.default_magnification),
-                )
-            except Exception:
-                pass
+        try:
+            set_value("cameraResWidthSpin", int(cfg.camera.resolution_width))
+            set_value("cameraResHeightSpin", int(cfg.camera.resolution_height))
+            set_text("fourccLineEdit", cfg.camera.fourcc)
+            set_checked("forceDirectShowCheck", cfg.camera.force_directshow)
+        except Exception:
+            pass
 
-            # Inference
-            try:
-                set_if("defaultConfidenceSpin", float(cfg.inference.default_confidence))
-                set_if("defaultIouSpin", float(cfg.inference.default_iou))
-            except Exception:
-                pass
+        try:
+            set_value("frameIntervalSpin", int(cfg.streaming.frame_interval_ms))
+            set_value("inferenceIntervalSpin", int(cfg.streaming.inference_interval_ms))
+        except Exception:
+            pass
 
-            # Brightness/Contrast
-            try:
-                set_if(
-                    "brightnessDefaultSpin",
-                    int(cfg.brightness_contrast.brightness_default),
-                )
-                set_if(
-                    "contrastDefaultSpin", int(cfg.brightness_contrast.contrast_default)
-                )
-            except Exception:
-                pass
+        try:
+            set_value("sensorWidthSpin", float(cfg.measurement.effective_sensor_width_mm))
+            set_value("sensorHeightSpin", float(cfg.measurement.effective_sensor_height_mm))
+            set_value("defaultMagnificationSpin", float(cfg.measurement.default_magnification))
+        except Exception:
+            pass
 
-            # Models
-            try:
-                set_if(
-                    "localModelsDirLine", cfg.models.local_models_dir, setter="setText"
-                )
-                set_if(
-                    "preferLocalCheck",
-                    bool(cfg.models.prefer_local),
-                    setter="setChecked",
-                )
-            except Exception:
-                pass
+        try:
+            set_value("defaultConfidenceSpin", float(cfg.inference.default_confidence))
+            set_value("defaultIouSpin", float(cfg.inference.default_iou))
+        except Exception:
+            pass
 
-            # Services
-            try:
-                set_if(
-                    "roboflowApiKeyLine",
-                    cfg.services.roboflow.api_key,
-                    setter="setText",
-                )
-                set_if(
-                    "directusBearerLine",
-                    cfg.services.directus.bearer_token,
-                    setter="setText",
-                )
-            except Exception:
-                pass
+        try:
+            set_value("brightnessDefaultSpin", int(cfg.brightness_contrast.brightness_default))
+            set_value("contrastDefaultSpin", int(cfg.brightness_contrast.contrast_default))
+        except Exception:
+            pass
+
+        try:
+            set_text("localModelsDirLine", cfg.models.local_models_dir)
+            set_checked("preferLocalCheck", cfg.models.prefer_local)
+        except Exception:
+            pass
+
+        try:
+            set_text("roboflowApiKeyLine", cfg.services.roboflow.api_key)
+            set_text("roboflowApiUrlLine", cfg.services.roboflow.api_url)
+            set_text("roboflowWorkspaceLine", cfg.services.roboflow.workspace)
+            set_text("roboflowWorkflowLine", cfg.services.roboflow.workflow)
+        except Exception:
+            pass
+
+        try:
+            set_text("directusApiUrlLine", cfg.services.directus.api_url)
+            set_text("directusBearerLine", cfg.services.directus.bearer_token)
+            set_value("directusTimeoutSpin", int(cfg.services.directus.timeout_seconds))
+        except Exception:
+            pass
 
     def _on_save_clicked(self):
         """Read values from UI and save them into settings on disk."""
@@ -150,122 +156,138 @@ class SettingsPageController:
         if cfg is None:
             return
 
-        def get_if(widget_name, getter="value"):
+        def get_text(widget_name):
+            w = self.page.findChild(QtWidgets.QWidget, widget_name)
+            if w is None:
+                return None
             try:
-                w = self.page.findChild(QtWidgets.QWidget, widget_name)
-                if w is None:
-                    return None
-                if getter == "text":
-                    return w.text()
-                if getter == "checked":
-                    return bool(w.isChecked())
-                try:
-                    return w.value()
-                except Exception:
-                    try:
-                        return w.text()
-                    except Exception:
-                        return None
+                return w.text()
             except Exception:
                 return None
 
-        # Camera
+        def get_value(widget_name):
+            w = self.page.findChild(QtWidgets.QWidget, widget_name)
+            if w is None:
+                return None
+            try:
+                return w.value()
+            except Exception:
+                try:
+                    return w.text()
+                except Exception:
+                    return None
+
+        def get_checked(widget_name):
+            w = self.page.findChild(QtWidgets.QWidget, widget_name)
+            if w is None:
+                return None
+            try:
+                return bool(w.isChecked())
+            except Exception:
+                return None
+
         try:
-            w = get_if("cameraResWidthSpin")
-            if w is not None:
-                cfg["camera"]["resolution_width"] = int(w)
-            h = get_if("cameraResHeightSpin")
-            if h is not None:
-                cfg["camera"]["resolution_height"] = int(h)
-            fourcc = get_if("fourccLineEdit", getter="text")
-            if fourcc is not None:
-                cfg["camera"]["fourcc"] = str(fourcc)
-            fd = get_if("forceDirectShowCheck", getter="checked")
-            if fd is not None:
-                cfg["camera"]["force_directshow"] = bool(fd)
+            v = get_value("cameraResWidthSpin")
+            if v is not None:
+                cfg["camera"]["resolution_width"] = int(v)
+            v = get_value("cameraResHeightSpin")
+            if v is not None:
+                cfg["camera"]["resolution_height"] = int(v)
+            v = get_text("fourccLineEdit")
+            if v is not None:
+                cfg["camera"]["fourcc"] = str(v)
+            v = get_checked("forceDirectShowCheck")
+            if v is not None:
+                cfg["camera"]["force_directshow"] = v
         except Exception:
             pass
 
-        # Streaming
         try:
-            fi = get_if("frameIntervalSpin")
-            if fi is not None:
-                cfg["streaming"]["frame_interval_ms"] = int(fi)
-            ii = get_if("inferenceIntervalSpin")
-            if ii is not None:
-                cfg["streaming"]["inference_interval_ms"] = int(ii)
+            v = get_value("frameIntervalSpin")
+            if v is not None:
+                cfg["streaming"]["frame_interval_ms"] = int(v)
+            v = get_value("inferenceIntervalSpin")
+            if v is not None:
+                cfg["streaming"]["inference_interval_ms"] = int(v)
         except Exception:
             pass
 
-        # Measurement
         try:
-            sw = get_if("sensorWidthSpin")
-            if sw is not None:
-                cfg["measurement"]["effective_sensor_width_mm"] = float(sw)
-            sh = get_if("sensorHeightSpin")
-            if sh is not None:
-                cfg["measurement"]["effective_sensor_height_mm"] = float(sh)
-            mag = get_if("defaultMagnificationSpin")
-            if mag is not None:
-                cfg["measurement"]["default_magnification"] = float(mag)
+            v = get_value("sensorWidthSpin")
+            if v is not None:
+                cfg["measurement"]["effective_sensor_width_mm"] = float(v)
+            v = get_value("sensorHeightSpin")
+            if v is not None:
+                cfg["measurement"]["effective_sensor_height_mm"] = float(v)
+            v = get_value("defaultMagnificationSpin")
+            if v is not None:
+                cfg["measurement"]["default_magnification"] = float(v)
         except Exception:
             pass
 
-        # Inference
         try:
-            dc = get_if("defaultConfidenceSpin")
-            if dc is not None:
-                cfg["inference"]["default_confidence"] = float(dc)
-            di = get_if("defaultIouSpin")
-            if di is not None:
-                cfg["inference"]["default_iou"] = float(di)
+            v = get_value("defaultConfidenceSpin")
+            if v is not None:
+                cfg["inference"]["default_confidence"] = float(v)
+            v = get_value("defaultIouSpin")
+            if v is not None:
+                cfg["inference"]["default_iou"] = float(v)
         except Exception:
             pass
 
-        # Brightness/Contrast
         try:
-            bd = get_if("brightnessDefaultSpin")
-            if bd is not None:
-                cfg["brightness_contrast"]["brightness_default"] = int(bd)
-            cd = get_if("contrastDefaultSpin")
-            if cd is not None:
-                cfg["brightness_contrast"]["contrast_default"] = int(cd)
+            v = get_value("brightnessDefaultSpin")
+            if v is not None:
+                cfg["brightness_contrast"]["brightness_default"] = int(v)
+            v = get_value("contrastDefaultSpin")
+            if v is not None:
+                cfg["brightness_contrast"]["contrast_default"] = int(v)
         except Exception:
             pass
 
-        # Models
         try:
-            lm = get_if("localModelsDirLine", getter="text")
-            if lm is not None:
-                cfg["models"]["local_models_dir"] = str(lm)
-            pl = get_if("preferLocalCheck", getter="checked")
-            if pl is not None:
-                cfg["models"]["prefer_local"] = bool(pl)
+            v = get_text("localModelsDirLine")
+            if v is not None:
+                cfg["models"]["local_models_dir"] = str(v)
+            v = get_checked("preferLocalCheck")
+            if v is not None:
+                cfg["models"]["prefer_local"] = v
         except Exception:
             pass
 
-        # Services
         try:
-            rf = get_if("roboflowApiKeyLine", getter="text")
-            if rf is not None:
-                cfg["services"]["roboflow"]["api_key"] = str(rf)
-            dr = get_if("directusBearerLine", getter="text")
-            if dr is not None:
-                cfg["services"]["directus"]["bearer_token"] = str(dr)
+            v = get_text("roboflowApiKeyLine")
+            if v is not None:
+                cfg["services"]["roboflow"]["api_key"] = str(v)
+            v = get_text("roboflowApiUrlLine")
+            if v is not None:
+                cfg["services"]["roboflow"]["api_url"] = str(v)
+            v = get_text("roboflowWorkspaceLine")
+            if v is not None:
+                cfg["services"]["roboflow"]["workspace"] = str(v)
+            v = get_text("roboflowWorkflowLine")
+            if v is not None:
+                cfg["services"]["roboflow"]["workflow"] = str(v)
         except Exception:
             pass
 
-        # Save settings (Settings.save handles path)
+        try:
+            v = get_text("directusApiUrlLine")
+            if v is not None:
+                cfg["services"]["directus"]["api_url"] = str(v)
+            v = get_text("directusBearerLine")
+            if v is not None:
+                cfg["services"]["directus"]["bearer_token"] = str(v)
+            v = get_value("directusTimeoutSpin")
+            if v is not None:
+                cfg["services"]["directus"]["timeout_seconds"] = int(v)
+        except Exception:
+            pass
+
         try:
             cfg.save()
         except Exception:
-            try:
-                # fallback: try function if available
-                from mpcamera.config import save_settings
-
-                save_settings(cfg)
-            except Exception:
-                traceback.print_exc()
+            traceback.print_exc()
 
 
 def setup(page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):
