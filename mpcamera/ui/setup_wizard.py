@@ -211,8 +211,8 @@ class SetupWizardDialog(QtWidgets.QDialog):
             has_rf_key = cfg.get("services", {}).get("roboflow", {}).get("api_key", "").strip()
             has_du_url = cfg.get("services", {}).get("directus", {}).get("api_url", "").strip()
 
-            # Show if both are missing (first run scenario)
-            return not (has_rf_key or has_du_url)
+            # Show if either is missing (not just both)
+            return not (has_rf_key and has_du_url)
         except Exception:
             # On error, don't force wizard
             return False

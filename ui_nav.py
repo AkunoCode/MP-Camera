@@ -425,8 +425,18 @@ class MainWindow(QtWidgets.QMainWindow):
 
         def worker():
             try:
+                from mpcamera.config import get_settings
+
+                cfg = get_settings()
+                api_url = cfg.get("services", {}).get("directus", {}).get("api_url", "").strip()
+                bearer_token = cfg.get("services", {}).get("directus", {}).get("bearer_token", "").strip()
+
+                if not api_url:
+                    logger.warning("Directus API URL not configured; skipping Directus fetch")
+                    return
+
                 logger.info("Initializing DirectusClient...")
-                client = DirectusClient()
+                client = DirectusClient(api_url=api_url, bearer_token=bearer_token or None)
                 logger.info("Directus: fetching sites...")
                 sites = client.get_sites(params={"fields": "*"})
                 logger.info(f"Directus: fetched {len(sites) if sites else 0} sites")
