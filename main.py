@@ -36,6 +36,13 @@ def main():
 
     setup_application_properties(app)
 
+    # Sync .env API URLs to config.json
+    try:
+        from mpcamera.config import sync_env_to_config
+        sync_env_to_config()
+    except Exception:
+        pass
+
     win = MainWindow(LAYOUT_PATH)
 
     win.setWindowTitle(APP_NAME)

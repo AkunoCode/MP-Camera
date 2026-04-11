@@ -129,3 +129,46 @@ def set_settings(settings: Settings) -> None:
     """Override the global settings instance."""
     global _GLOBAL_SETTINGS
     _GLOBAL_SETTINGS = settings
+
+
+def sync_env_to_config() -> None:
+    """Read API URLs from .env file and sync to config.json if they're set."""
+    import os
+    from dotenv import load_dotenv
+
+    # Load .env file
+    env_path = Path.cwd() / ".env"
+    if not env_path.exists():
+        return
+
+    try:
+        load_dotenv(env_path)
+    except Exception:
+        return
+
+    # Get settings
+    try:
+        cfg = get_settings()
+    except Exception:
+        return
+
+    # Sync Roboflow API URL
+    rf_url = os.getenv("ROBOFLOW_API_URL")
+    if rf_url and rf_url.strip():
+        if not cfg.get("services", {}).get("roboflow", {}).get("api_url") or \
+           cfg["services"]["roboflow"]["api_url"] == "http://localhost:9001":
+            # Only override if empty or still default
+            cfg["services"]["roboflow"]["api_url"] = rf_url.strip()
+
+    # Sync Directus API URL
+    du_url = os.getenv("DIRECTUS_API_URL")
+    if du_url and du_url.strip():
+        if not cfg.get("services", {}).get("directus", {}).get("api_url"):
+            # Only override if empty
+            cfg["services"]["directus"]["api_url"] = du_url.strip()
+
+    # Save updated config
+    try:
+        cfg.save()
+    except Exception:
+        pass
