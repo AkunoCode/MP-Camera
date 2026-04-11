@@ -425,6 +425,7 @@ class MainWindow(QtWidgets.QMainWindow):
         t = Thread(target=worker, daemon=True)
         t.start()
 
+    @QtCore.pyqtSlot()
     def _on_directus_loaded(self):
         """Called on the main thread after Directus data has been fetched."""
         try:
