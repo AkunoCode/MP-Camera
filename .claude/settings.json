@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(.venv311/bin/pip install:*)",
-      "Bash(.venv311/bin/python -c ':*)"
+      "Bash(.venv311/bin/python -c ':*)",
+      "Bash(python -m pytest tests/ -v)",
+      "Bash(python -c \"from mpcamera.controllers.camera_page import CameraPageController, CameraState; print\\('✓ camera_page imports OK'\\)\")",
+      "Bash(python -c \"from mpcamera.utils.camera_worker import CameraWorker; from mpcamera.utils.inference_worker import InferenceWorker; from mpcamera.utils.inference_utils import _iou_matrix; from mpcamera.utils.local_models_utils import LocalModelInference; from mpcamera.services.roboflow import RoboflowClient; print\\('✓ All modified modules import OK'\\)\")"
     ]
   }
 }
