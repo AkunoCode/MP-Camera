@@ -1476,9 +1476,8 @@ class CameraPageController(QtCore.QObject):
         """Run inference via `InferenceWorker` when available, otherwise fall back to
         the legacy threaded implementation.
         """
-        # Show spinner if static image
-        if not self._streaming:
-            self._toggle_spinner(True)
+        # Show spinner/indicator for both static image and live stream
+        self._toggle_spinner(True)
 
         # Retrieve slider values
         conf_val = self.DEFAULT_CONFIDENCE
