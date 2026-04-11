@@ -47,6 +47,10 @@ class ResultsManager:
             or []
         )
 
+        if not pts:
+            label = pred.get("label", pred.get("class", "unknown"))
+            print(f"[MORPHOMETRICS] Prediction missing points (label={label!r}), skipping morphometrics")
+
         if len(pts) < 3 or not um_per_px:
             return stats
 
