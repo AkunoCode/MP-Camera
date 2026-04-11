@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -102,10 +101,7 @@ class Settings(dict):
             try:
                 user_conf = json.loads(u_path.read_text(encoding="utf-8"))
             except json.JSONDecodeError:
-                print(
-                    f"Warning: Invalid JSON in {u_path}, using defaults.",
-                    file=sys.stderr,
-                )
+                logger.warning(f"Invalid JSON in {u_path}, using schema defaults")
 
         # 3. Merge
         merged = _deep_update(defaults, user_conf)
@@ -115,7 +111,7 @@ class Settings(dict):
             try:
                 jsonschema.validate(instance=merged, schema=schema)
             except jsonschema.ValidationError as e:
-                print(f"Config validation warning: {e.message}", file=sys.stderr)
+                logger.warning(f"Config validation warning: {e.message}")
 
         return cls(merged)
 
@@ -194,4 +190,4 @@ def sync_env_to_config() -> None:
     try:
         cfg.save()
     except Exception:
-        pass
+        logger.error("Failed to save config after env sync", exc_info=True)
