@@ -155,6 +155,12 @@ class CameraPageController(QtCore.QObject):
         self._stream_inference_timer.setInterval(self.INFERENCE_INTERVAL_MS)
         self._stream_inference_timer.timeout.connect(self._maybe_run_stream_inference)
 
+        # Debounce timer for slider-driven re-filtering
+        self._slider_debounce_timer = QtCore.QTimer()
+        self._slider_debounce_timer.setSingleShot(True)
+        self._slider_debounce_timer.setInterval(150)  # ms
+        self._slider_debounce_timer.timeout.connect(self._refilter_from_cache)
+
         # Override class/static defaults with user settings when available
         try:
             cfg = get_settings()
@@ -447,13 +453,13 @@ class CameraPageController(QtCore.QObject):
         if ui["save_btn"] is not None:
             ui["save_btn"].clicked.connect(self._save_results)
 
-        # Sliders - Use sliderReleased to re-filter from cache (no new inference)
+        # Sliders - Use debounced sliderReleased to re-filter from cache (no new inference)
         if ui["conf_slider"] is not None:
-            ui["conf_slider"].sliderReleased.connect(self._refilter_from_cache)
+            ui["conf_slider"].sliderReleased.connect(self._slider_debounce_timer.start)
             # Update label live as the slider moves
             ui["conf_slider"].valueChanged.connect(self._update_param_labels)
         if ui["iou_slider"] is not None:
-            ui["iou_slider"].sliderReleased.connect(self._refilter_from_cache)
+            ui["iou_slider"].sliderReleased.connect(self._slider_debounce_timer.start)
             ui["iou_slider"].valueChanged.connect(self._update_param_labels)
         # Note: brightness/contrast sliders are initialized in _init_ui_defaults
         # so that their values are applied before the first _apply_adjustments_and_refresh call.
