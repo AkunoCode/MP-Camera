@@ -553,9 +553,11 @@ class CameraPageController(QtCore.QObject):
             combo.blockSignals(True)
             combo.clear()
 
-            # 1. Add Cloud Models
-            combo.addItem(*self.DEFAULT_MODEL)
-            combo.addItem(*self.ALT_MODEL)
+            # 1. Add Cloud Models (skip if empty display names)
+            if self.DEFAULT_MODEL[0]:  # Check if display_name is not empty
+                combo.addItem(*self.DEFAULT_MODEL)
+            if self.ALT_MODEL[0]:  # Check if display_name is not empty
+                combo.addItem(*self.ALT_MODEL)
 
             # 2. Add Local Models
             self._populate_local_models(combo)
@@ -576,11 +578,22 @@ class CameraPageController(QtCore.QObject):
             # Sync with current Roboflow default if available
             if RoboflowClient and not selected_local:
                 try:
-                    current_wf = RoboflowClient.get_default().workflow
-                    idx = combo.findData(current_wf)
-                    combo.setCurrentIndex(idx if idx >= 0 else 0)
-                except Exception:
-                    combo.setCurrentIndex(0)
+                    rf_client = RoboflowClient.get_default()
+                    current_wf = rf_client.workflow
+                    if current_wf:  # Only search if workflow is set
+                        idx = combo.findData(current_wf)
+                        if idx >= 0:
+                            combo.setCurrentIndex(idx)
+                        elif combo.count() > 0:
+                            combo.setCurrentIndex(0)
+                    elif combo.count() > 0:
+                        combo.setCurrentIndex(0)
+                except Exception as e:
+                    logger.debug(f"Could not sync Roboflow workflow: {e}")
+                    if combo.count() > 0:
+                        combo.setCurrentIndex(0)
+            elif combo.count() > 0:
+                combo.setCurrentIndex(0)
             combo.blockSignals(False)
 
         # Populate camera source combo (detect available cameras)
