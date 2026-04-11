@@ -121,6 +121,7 @@ class CameraPageController(QtCore.QObject):
         self._inference_running = False
         self._last_pixmap: Optional[QtGui.QPixmap] = None
         self._current_frame_np: Optional[np.ndarray] = None
+        self._frame_lock = threading.Lock()  # Synchronize access to frame buffers
         self._cached_soils: List[Dict] = []
         # Currently selected camera device index (int). Defaults to 0.
         self._selected_camera_index: int = 0
@@ -900,10 +901,14 @@ class CameraPageController(QtCore.QObject):
         if adjust_brightness_contrast is None:
             return
 
-        # Prefer raw image if available, otherwise use current frame
-        raw = getattr(self, "_raw_frame_np", None)
-        if raw is None:
-            raw = self._current_frame_np
+        # Safely read frame buffer under lock
+        with self._frame_lock:
+            raw = getattr(self, "_raw_frame_np", None)
+            if raw is None:
+                raw = self._current_frame_np
+            if raw is not None:
+                raw = raw.copy()  # Work on a snapshot outside the lock
+
         if raw is None:
             return
 
@@ -927,7 +932,8 @@ class CameraPageController(QtCore.QObject):
             adjusted = raw
 
         # Update current frame used for color extraction and for saving to disk
-        self._current_frame_np = adjusted
+        with self._frame_lock:
+            self._current_frame_np = adjusted
 
         # Update displayed pixmap
         try:
@@ -1196,7 +1202,8 @@ class CameraPageController(QtCore.QObject):
             if self._paused:
                 return
             # Keep the raw BGR frame and apply any brightness/contrast adjustments
-            self._raw_frame_np = frame.copy()
+            with self._frame_lock:
+                self._raw_frame_np = frame.copy()
             self._apply_adjustments_and_refresh()
         except Exception:
             pass
