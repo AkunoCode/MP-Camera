@@ -2,7 +2,10 @@ from PyQt6 import uic, QtWidgets, QtGui, QtCore
 from PyQt6.QtCore import pyqtSignal, QUrl
 import os
 import json
+import logging
 from threading import Thread
+
+logger = logging.getLogger(__name__)
 
 try:
     from mpcamera.services.directus import DirectusClient
@@ -284,9 +287,10 @@ class MainWindow(QtWidgets.QMainWindow):
             print("Error setting up settingsPage UI:", e)
         # start fetching Directus data in background so pages can populate
         try:
+            logger.info("Initiating Directus data fetch on startup")
             self._start_directus_fetch()
         except Exception as e:
-            print("Failed to start Directus fetch:", e)
+            logger.error(f"Failed to start Directus fetch: {e}", exc_info=True)
 
     def closeEvent(self, event):
         """Ensure camera and threads are cleaned up on window close."""
@@ -399,22 +403,25 @@ class MainWindow(QtWidgets.QMainWindow):
         When complete the `dataLoaded` signal is emitted on the main thread.
         """
         if DirectusClient is None:
-            print("DirectusClient not available (module import failed); skipping fetch")
+            logger.warning("DirectusClient not available (module import failed); skipping fetch")
             return
 
         def worker():
             try:
+                logger.info("Initializing DirectusClient...")
                 client = DirectusClient()
-                print("Directus: fetching sites...")
+                logger.info("Directus: fetching sites...")
                 sites = client.get_sites(params={"fields": "*"})
-                print("Directus: fetching soilsamples...")
+                logger.info(f"Directus: fetched {len(sites) if sites else 0} sites")
+                logger.info("Directus: fetching soilsamples...")
                 soils = client.get_soilsamples(params={"fields": "*"})
+                logger.info(f"Directus: fetched {len(soils) if soils else 0} soilsamples")
                 # store results on the main window
                 self.sites = sites
                 self.soilsamples = soils
                 # Directus data fetched; not writing cache files to disk per configuration
-                print("Directus data fetched (not cached to disk)")
-                print("Directus fetch complete")
+                logger.info("Directus data fetched (not cached to disk)")
+                logger.info("Directus fetch complete")
                 # notify main thread
                 try:
                     QtCore.QMetaObject.invokeMethod(
@@ -429,10 +436,11 @@ class MainWindow(QtWidgets.QMainWindow):
                     except Exception:
                         pass
             except Exception as e:
-                print("Directus fetch failed:", e)
+                logger.error(f"Directus fetch failed: {e}", exc_info=True)
 
         t = Thread(target=worker, daemon=True)
         t.start()
+        logger.info("Started Directus fetch thread")
 
     @QtCore.pyqtSlot()
     def _on_directus_loaded(self):
