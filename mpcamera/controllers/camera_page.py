@@ -970,6 +970,9 @@ class CameraPageController(QtCore.QObject):
 
     def _on_model_changed(self):
         """Update config or local state when model changes."""
+        # Don't change model mid-inference — it would load the wrong weights
+        if self._inference_running:
+            return
         if self.ui["model_combo"] is None:
             return
 
