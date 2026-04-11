@@ -128,7 +128,9 @@ class LocalModelInference:
 
         for candidate in candidates:
             if candidate.exists() and candidate.is_file():
-                return str(candidate)
+                resolved = str(candidate)
+                print(f"[MODEL] Resolved model path: {resolved}")
+                return resolved
 
         raise FileNotFoundError(
             f"Model file not found: '{model_path}'. Checked: "
