@@ -96,6 +96,10 @@ class CameraWorker(QObject):
                     pass
 
         except Exception as e:
+            # Ensure device handle is released on any error
+            if self._vc is not None and self._vc.isOpened():
+                self._vc.release()
+            self._vc = None
             traceback.print_exc()
             self.error_occurred.emit(str(e))
 
