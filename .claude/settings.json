@@ -23,7 +23,39 @@
       "Bash(hdiutil eject:*)",
       "Bash(ls -lh dist/SoilSight-*.dmg)",
       "Bash(git push:*)",
-      "Bash(git tag:*)"
+      "Bash(git tag:*)",
+      "Bash(chmod +x /Users/kodecraft-carlo-rabe/Desktop/MP-Camera/scripts/pre_commit_check.sh)",
+      "Bash(bash scripts/pre_commit_check.sh)",
+      "Bash(bash scripts/post_tag_reminder.sh)",
+      "Bash(bash scripts/hook_pre_commit.sh)",
+      "Bash(bash scripts/hook_post_tag.sh)",
+      "Bash(python3 scripts/validate_ui.py)",
+      "Bash(git diff --cached --name-only:*)",
+      "Bash(python3 -m py_compile:*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/hook_pre_commit.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/hook_post_tag.sh"
+          }
+        ]
+      }
     ]
   }
 }
