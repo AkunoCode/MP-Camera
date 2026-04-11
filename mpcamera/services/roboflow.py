@@ -5,7 +5,8 @@ from typing import Any, Dict
 
 try:
     from mpcamera.config import get_settings
-except Exception:
+except Exception as _e:
+    logger.debug(f"mpcamera.config unavailable in roboflow: {_e}")
     get_settings = None
 
 logger = logging.getLogger(__name__)
@@ -68,7 +69,7 @@ class RoboflowClient:
         except Exception as e:
             # Do not raise — caller should handle absence of dependency gracefully.
             self._client = None
-            print("RoboflowClient: failed to import inference_sdk or create client:", e)
+            logger.error("Failed to create RoboflowClient (inference_sdk missing or misconfigured)", exc_info=True)
 
     def refresh_auth_from_settings(self) -> None:
         """Refresh API URL/key/workspace from env or settings."""
@@ -174,4 +175,5 @@ def _get_roboflow_settings() -> Dict[str, Any]:
             "workflow": getattr(roboflow, "workflow", None),
         }
     except Exception:
+        logger.debug("Could not read Roboflow settings from config", exc_info=True)
         return {}
