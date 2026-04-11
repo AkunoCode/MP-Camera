@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # Optional dependency: jsonschema
 try:
@@ -121,7 +124,9 @@ def get_settings(path: str | Path | None = None) -> Settings:
     """Get or create the global cached Settings instance."""
     global _GLOBAL_SETTINGS
     if _GLOBAL_SETTINGS is None:
+        logger.debug(f"Loading settings from {path or DEFAULT_USER_CONFIG}")
         _GLOBAL_SETTINGS = Settings.load(path)
+        logger.info("Settings loaded successfully")
     return _GLOBAL_SETTINGS
 
 
@@ -139,17 +144,21 @@ def sync_env_to_config() -> None:
     # Load .env file
     env_path = Path.cwd() / ".env"
     if not env_path.exists():
+        logger.debug(".env file not found; skipping env sync")
         return
 
     try:
+        logger.debug(f"Loading .env from {env_path}")
         load_dotenv(env_path)
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Failed to load .env: {e}")
         return
 
     # Get settings
     try:
         cfg = get_settings()
-    except Exception:
+    except Exception as e:
+        logger.error(f"Failed to load settings for env sync: {e}")
         return
 
     # Sync Roboflow API URL

@@ -1,4 +1,5 @@
 import os
+import logging
 from threading import Lock
 from typing import Any, Dict
 
@@ -6,6 +7,8 @@ try:
     from mpcamera.config import get_settings
 except Exception:
     get_settings = None
+
+logger = logging.getLogger(__name__)
 
 
 class RoboflowClient:

@@ -57,7 +57,10 @@ class DirectusClient:
         self.timeout = timeout
 
         if not self.api_url:
+            logger.error("DIRECTUS_API_URL is not set")
             raise ValueError("DIRECTUS_API_URL is not set (env or api_url argument)")
+
+        logger.info(f"Initializing DirectusClient with URL: {self.api_url}")
 
         self.session = requests.Session()
         # Set sensible headers
@@ -66,8 +69,9 @@ class DirectusClient:
             self.session.headers.update(
                 {"Authorization": f"Bearer {self.bearer_token}"}
             )
+            logger.debug("DirectusClient initialized with bearer token")
         else:
-            logger.debug(
+            logger.warning(
                 "No DIRECTUS_BEARER_TOKEN provided; requests will be unauthenticated"
             )
 
@@ -76,12 +80,17 @@ class DirectusClient:
 
     def _get(self, path: str, params: Optional[Dict[str, Any]] = None) -> Any:
         url = self._build_url(path)
-        resp = self.session.get(url, params=params, timeout=self.timeout)
+        logger.debug(f"GET {path} with params={params}")
         try:
+            resp = self.session.get(url, params=params, timeout=self.timeout)
             resp.raise_for_status()
-        except requests.HTTPError:
-            # attach content to the error for easier debugging
+            logger.debug(f"GET {path} returned status {resp.status_code}")
+        except requests.HTTPError as e:
+            logger.error(f"HTTP error fetching {path}: {e.response.status_code}")
             logger.debug("Directus error response: %s", resp.text)
+            raise
+        except requests.RequestException as e:
+            logger.error(f"Request error fetching {path}: {e}", exc_info=True)
             raise
         # Return parsed JSON; callers expect dict/list depending on Directus
         return resp.json()
@@ -91,15 +100,27 @@ class DirectusClient:
 
         params: optional query params passed to Directus (fields, filter, limit, etc.)
         """
-        return self._get("items/sites", params=params)
+        logger.info("Fetching sites from Directus")
+        result = self._get("items/sites", params=params)
+        count = len(result) if isinstance(result, list) else (len(result.get("data", [])) if isinstance(result, dict) else 0)
+        logger.info(f"Fetched {count} sites from Directus")
+        return result
 
     def get_soilsamples(self, params: Optional[Dict[str, Any]] = None) -> Any:
         """GET /items/soilsamples"""
-        return self._get("items/soilsamples", params=params)
+        logger.info("Fetching soilsamples from Directus")
+        result = self._get("items/soilsamples", params=params)
+        count = len(result) if isinstance(result, list) else (len(result.get("data", [])) if isinstance(result, dict) else 0)
+        logger.info(f"Fetched {count} soilsamples from Directus")
+        return result
 
     def get_microplastics(self, params: Optional[Dict[str, Any]] = None) -> Any:
         """GET /items/microplastics"""
-        return self._get("items/microplastics", params=params)
+        logger.info("Fetching microplastics from Directus")
+        result = self._get("items/microplastics", params=params)
+        count = len(result) if isinstance(result, list) else (len(result.get("data", [])) if isinstance(result, dict) else 0)
+        logger.info(f"Fetched {count} microplastics from Directus")
+        return result
 
     def upload_file(self, file_path: str) -> Any:
         """Upload a file to Directus `/files` and return the created file record.

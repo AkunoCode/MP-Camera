@@ -1,35 +1,16 @@
 import sys
-import logging
 from PyQt6 import QtWidgets, QtGui
 import os
-from pathlib import Path
 from ui_nav import MainWindow
+from mpcamera.logging_utils import setup_logging, get_logger
+
+logger = get_logger(__name__)
 
 # --- Constants ---
 APP_NAME = "SoilSight"
 BASE_DIR = os.path.dirname(__file__)
 LAYOUT_PATH = os.path.join(BASE_DIR, "mpcamera", "layouts", f"{APP_NAME}_MainWindow.ui")
 ICON_PATH = os.path.join(BASE_DIR, "mpcamera", "assets", f"{APP_NAME}_Logo.ico")
-
-
-def setup_logging():
-    """Set up logging to file for debugging packaged app issues."""
-    try:
-        log_dir = Path.home() / ".mpcamera"
-        log_dir.mkdir(exist_ok=True)
-        log_file = log_dir / "debug.log"
-
-        logging.basicConfig(
-            level=logging.DEBUG,
-            format='%(asctime)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.FileHandler(log_file),
-                logging.StreamHandler()
-            ]
-        )
-        logging.info(f"Logging to {log_file}")
-    except Exception as e:
-        print(f"Failed to set up logging: {e}")
 
 
 def setup_application_properties(app: QtWidgets.QApplication):
@@ -55,7 +36,7 @@ def setup_application_properties(app: QtWidgets.QApplication):
 
 def main():
     setup_logging()
-    logging.info(f"Starting {APP_NAME}")
+    logger.info(f"Starting {APP_NAME}")
 
     app = QtWidgets.QApplication(sys.argv)
 
