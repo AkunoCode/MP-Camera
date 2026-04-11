@@ -1,7 +1,10 @@
 import os
 import traceback
+import logging
 from PyQt6 import QtWidgets
 from mpcamera.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class SettingsPageController:
@@ -23,18 +26,28 @@ class SettingsPageController:
         self.main_window = main_window
         self.ui = page
         try:
+            logger.info("SettingsPageController initializing...")
             self._wire()
             self.load_values()
             self._validate_and_warn()
-        except Exception:
+            logger.info("SettingsPageController initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize SettingsPageController: {e}", exc_info=True)
             traceback.print_exc()
 
     def _wire(self):
         # Connect all Save buttons (one per tab, all call same handler)
+        connected_count = 0
         for btn_name in self._SAVE_BUTTONS:
             btn = self.page.findChild(QtWidgets.QPushButton, btn_name)
             if btn is not None:
                 btn.clicked.connect(self._on_save_clicked)
+                connected_count += 1
+                logger.debug(f"Connected save button: {btn_name}")
+            else:
+                logger.debug(f"Save button not found: {btn_name}")
+        
+        logger.info(f"Connected {connected_count}/{len(self._SAVE_BUTTONS)} save buttons")
 
         # Show/Hide toggles for sensitive fields
         self._wire_toggle("roboflowApiKeyToggle", "roboflowApiKeyLine")
@@ -196,11 +209,14 @@ class SettingsPageController:
 
     def _on_save_clicked(self):
         """Read values from UI and save them into settings on disk."""
+        logger.info("Save button clicked!")
         try:
             cfg = get_settings()
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to get settings: {e}", exc_info=True)
             cfg = None
         if cfg is None:
+            logger.error("Settings is None, cannot save")
             return
 
         def get_text(widget_name):
@@ -333,8 +349,27 @@ class SettingsPageController:
 
         try:
             cfg.save()
-        except Exception:
+            # Show success message to user
+            logger.info("Settings saved successfully")
+            try:
+                QtWidgets.QMessageBox.information(
+                    self.page,
+                    "Settings Saved",
+                    "Settings have been saved successfully."
+                )
+            except Exception as msg_err:
+                logger.debug(f"Could not show success message: {msg_err}")
+        except Exception as e:
+            logger.error(f"Failed to save settings: {e}", exc_info=True)
             traceback.print_exc()
+            try:
+                QtWidgets.QMessageBox.critical(
+                    self.page,
+                    "Save Failed",
+                    f"Failed to save settings: {str(e)}"
+                )
+            except Exception as msg_err:
+                logger.error(f"Could not show error message: {msg_err}")
 
 
 def setup(page: QtWidgets.QWidget, main_window: QtWidgets.QMainWindow):

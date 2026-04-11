@@ -285,12 +285,29 @@ class MainWindow(QtWidgets.QMainWindow):
                 )
         except Exception as e:
             print("Error setting up settingsPage UI:", e)
+        
+        # Show setup wizard if this is first run (missing API credentials)
+        self._show_setup_wizard_if_needed()
+        
         # start fetching Directus data in background so pages can populate
         try:
             logger.info("Initiating Directus data fetch on startup")
             self._start_directus_fetch()
         except Exception as e:
             logger.error(f"Failed to start Directus fetch: {e}", exc_info=True)
+
+    def _show_setup_wizard_if_needed(self):
+        """Show setup wizard on first run if API credentials are missing."""
+        try:
+            from mpcamera.ui.setup_wizard import SetupWizardDialog
+            
+            if SetupWizardDialog.should_show_wizard():
+                logger.info("Showing setup wizard for first-run configuration")
+                wizard = SetupWizardDialog(self)
+                wizard.load_current_values()
+                wizard.exec()
+        except Exception as e:
+            logger.debug(f"Could not show setup wizard: {e}")
 
     def closeEvent(self, event):
         """Ensure camera and threads are cleaned up on window close."""

@@ -56,11 +56,11 @@ class DirectusClient:
         self.bearer_token = bearer_token or os.environ.get("DIRECTUS_BEARER_TOKEN")
         self.timeout = timeout
 
+        # Allow initialization without API URL (will use config later or on first run setup)
         if not self.api_url:
-            logger.error("DIRECTUS_API_URL is not set")
-            raise ValueError("DIRECTUS_API_URL is not set (env or api_url argument)")
-
-        logger.info(f"Initializing DirectusClient with URL: {self.api_url}")
+            logger.debug("DIRECTUS_API_URL not configured; client will only work after configuration")
+        else:
+            logger.info(f"Initializing DirectusClient with URL: {self.api_url}")
 
         self.session = requests.Session()
         # Set sensible headers
@@ -71,11 +71,13 @@ class DirectusClient:
             )
             logger.debug("DirectusClient initialized with bearer token")
         else:
-            logger.warning(
+            logger.debug(
                 "No DIRECTUS_BEARER_TOKEN provided; requests will be unauthenticated"
             )
 
     def _build_url(self, path: str) -> str:
+        if not self.api_url:
+            raise ValueError("DIRECTUS_API_URL is not configured. Please configure it in Settings.")
         return f"{self.api_url.rstrip('/')}/{path.lstrip('/')}"
 
     def _get(self, path: str, params: Optional[Dict[str, Any]] = None) -> Any:
