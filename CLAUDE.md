@@ -60,16 +60,40 @@ inference server start --dev
 |---|---|
 | `ui_nav.py` | Page navigation, Directus data fetch on startup, `dataLoaded` signal |
 | `mpcamera/controllers/camera_page.py` | Live capture, inference trigger, morphometric dispatch, results display |
+| `mpcamera/controllers/farm_page.py` | Farm/site management UI controller |
+| `mpcamera/controllers/samples_page.py` | Soil sample listing and selection UI controller |
+| `mpcamera/controllers/settings_page.py` | App settings UI controller (model path, camera, scale) |
+| `mpcamera/utils/camera_worker.py` | QTimer-based camera capture loop; emits frames to main thread |
+| `mpcamera/utils/inference_worker.py` | QThread wrapper that runs inference and emits `finished` signal |
 | `mpcamera/utils/inference_utils.py` | Normalize multi-architecture model outputs; confidence/IoU filtering |
 | `mpcamera/utils/local_models_utils.py` | Load and run local `.pth`/`.pt` models; device selection |
+| `mpcamera/utils/results_manager.py` | Aggregate and format per-particle morphometric results |
+| `mpcamera/utils/prediction_utils.py` | Post-processing helpers for prediction dicts |
 | `mpcamera/services/roboflow.py` | Roboflow cloud/local server client (thread-safe singleton) |
 | `mpcamera/services/directus.py` | REST client for Directus (sites, soilsamples, microplastics collections) |
 | `mpcamera/utils/morphometrics/` | 8 shape metric modules operating in μm units |
 | `mpcamera/utils/um_per_pixel.py` | Convert pixel dimensions → μm using sensor specs + magnification |
 | `mpcamera/config.py` | JSON-schema-validated settings with env var override support |
+| `mpcamera/ui/overlays.py` | Render masks/bboxes onto images |
+| `mpcamera/ui/results_window.py` | Metrics table dialog shown after inference |
+| `mpcamera/ui/zoomable_view.py` | Pan/zoom QGraphicsView for live and result frames |
 
 ### UI Files
 Qt Designer `.ui` files live in `mpcamera/layouts/`. Edit them with Qt Designer; do not hand-edit XML. Controllers load them via `uic.loadUi()`.
 
 ### Local Model Weights
 Stored in `models/` (gitignored). `LocalModelInference` expects `.pth` (MaskRCNN/RF-DETR) or `.pt` (YOLOv11) files placed there and selected via Settings page.
+
+## Testing
+
+```bash
+python -m pytest tests/ -v
+```
+
+## Known Gotchas
+
+- **Thread safety on frames**: `_raw_frame_np` and `_current_frame_np` in `camera_page.py` are written by the camera worker and read by both the display pipeline and inference worker — always protect with a mutex. See `docs/optimization-analysis.md` issue 7.1.
+- **Signal marshaling**: Qt signals emitted from worker QThreads are normally safe via queued connections, but don't emit GUI-touching signals directly from threads; use `QMetaObject.invokeMethod` with `Qt.QueuedConnection` when in doubt. See issue 7.2.
+- **Never hand Qt GUI objects (QPixmap, QImage) to worker threads** — convert to numpy/bytes on the main thread first.
+- **`.ui` files**: Do not hand-edit XML in `mpcamera/layouts/`; use Qt Designer only.
+- **36 identified issues** (19 high severity) catalogued in `docs/optimization-analysis.md` — consult before touching threading, NMS, or camera capture code.
