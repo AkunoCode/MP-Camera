@@ -36,15 +36,18 @@ from mpcamera.utils.camera_worker import CameraWorker
 
 try:
     from mpcamera.utils.inference_worker import InferenceWorker
-except Exception:
+except Exception as _e:
+    logger.debug(f"Optional import 'InferenceWorker' unavailable: {_e}")
     InferenceWorker = None
 try:
     from mpcamera.utils.form_handler import FormHandler
-except Exception:
+except Exception as _e:
+    logger.debug(f"Optional import 'FormHandler' unavailable: {_e}")
     FormHandler = None
 try:
     from mpcamera.ui.results_window import ResultsWindow
-except Exception:
+except Exception as _e:
+    logger.debug(f"Optional import 'ResultsWindow' unavailable: {_e}")
     ResultsWindow = None
 from mpcamera.utils.camera_utils import extract_directus_items, get_site_id_from_sample
 from mpcamera.utils.prediction_utils import extract_points_from_prediction
@@ -68,13 +71,15 @@ from mpcamera.utils.morphometrics import (
 # Image adjustment util
 try:
     from mpcamera.utils.image_utils import adjust_brightness_contrast
-except Exception:
+except Exception as _e:
+    logger.debug(f"Optional import 'adjust_brightness_contrast' unavailable: {_e}")
     adjust_brightness_contrast = None
 
 # Import the local inference class
 try:
     from mpcamera.utils.local_models_utils import LocalModelInference
-except ImportError:
+except ImportError as _e:
+    logger.debug(f"Optional import 'LocalModelInference' unavailable: {_e}")
     LocalModelInference = None
 
 
@@ -338,7 +343,7 @@ class CameraPageController(QtCore.QObject):
         self._paused = new_state == CameraState.PAUSED
         self._inference_running = new_state == CameraState.INFERRING
 
-        print(f"[STATE] {old.name} → {new_state.name}")
+        logger.debug(f"State transition: {old.name} → {new_state.name}")
 
     @property
     def camera_worker(self) -> "CameraWorker":
@@ -420,7 +425,7 @@ class CameraPageController(QtCore.QObject):
 
         missing = [k for k, v in elements.items() if v is None]
         if missing:
-            print(f"[CAMERA PAGE] Warning: UI elements not found: {missing}")
+            logger.warning(f"UI elements not found: {missing}")
 
         return elements
 
@@ -623,7 +628,7 @@ class CameraPageController(QtCore.QObject):
     def _populate_local_models(self, combo: QtWidgets.QComboBox):
         """Scans the models directory and adds local model files (.pth and .pt) to the combobox."""
         if not os.path.exists(self.LOCAL_MODELS_DIR):
-            print(f"[CAMERA PAGE] Models directory not found: {self.LOCAL_MODELS_DIR}")
+            logger.warning(f"Local models directory not found: {self.LOCAL_MODELS_DIR}")
             hint_text = "Local: No models folder found"
             combo.insertSeparator(combo.count())
             combo.addItem(hint_text, None)
@@ -641,7 +646,7 @@ class CameraPageController(QtCore.QObject):
         pt_files = glob.glob(os.path.join(self.LOCAL_MODELS_DIR, "*.pt"))
         model_files = sorted(list(set(pth_files + pt_files)))
         if not model_files:
-            print(f"[CAMERA PAGE] No .pt/.pth files found in {self.LOCAL_MODELS_DIR}")
+            logger.info(f"No .pt/.pth model files found in {self.LOCAL_MODELS_DIR}")
             hint_text = "Local: No .pt/.pth files found"
             combo.insertSeparator(combo.count())
             combo.addItem(hint_text, None)
@@ -655,7 +660,7 @@ class CameraPageController(QtCore.QObject):
                 pass
             return
 
-        print(f"[CAMERA PAGE] Found {len(model_files)} local models.")
+        logger.info(f"Found {len(model_files)} local model files.")
         combo.insertSeparator(combo.count())
 
         for p in model_files:
@@ -704,9 +709,9 @@ class CameraPageController(QtCore.QObject):
                     pass
 
         except ImportError:
-            print("ZoomableGraphicsView not found, using default.")
+            logger.warning("ZoomableGraphicsView not available, using default.")
         except Exception as e:
-            print(f"View replacement failed: {e}")
+            logger.error("Failed to replace graphics view with ZoomableGraphicsView; error: {e}")
 
     # ================= DATA LOADING =================
 
