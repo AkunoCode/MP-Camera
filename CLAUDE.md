@@ -101,9 +101,34 @@ python -m pytest tests/ -v
 ## Development Rules
 
 ### Logging & Error Handling
-- **All errors must be logged**, never silent `except pass`. Use `logger.error()` with `exc_info=True` for full tracebacks.
-- Packaged app debug logs go to `~/.mpcamera/debug.log` (set up in `main.py`).
-- Use `import logging; logger = logging.getLogger(__name__)` in all modules that need error tracking.
+
+**Setup**: Logging is centralized via `mpcamera/logging_utils.py`. It's initialized in `main.py` and writes to both console and `~/.mpcamera/debug.log`.
+
+**Using logging in any module:**
+```python
+import logging
+from mpcamera.logging_utils import get_logger
+
+logger = get_logger(__name__)
+
+# Use it
+logger.info("Something happened")
+logger.error("Error occurred", exc_info=True)  # exc_info=True captures full traceback
+logger.debug("Detailed debugging info")
+logger.warning("Warning message")
+```
+
+**Rules:**
+- **All errors must be logged**, never silent `except pass`
+- Use `logger.error(..., exc_info=True)` to capture full tracebacks for debugging
+- Log at the right level:
+  - `DEBUG`: Detailed info (function entry, parameter values, low-level operations)
+  - `INFO`: Important events (module initialized, data loaded, camera started)
+  - `WARNING`: Something unexpected but recoverable (fallback used, missing optional config)
+  - `ERROR`: Failure that impacts functionality (API unreachable, camera failed to open)
+- **Never log sensitive data**: API keys, tokens, passwords. Log only non-sensitive parts like endpoint URL
+- Packaged app logs are at `~/.mpcamera/debug.log` (file always DEBUG level)
+- Console output in packaged app is INFO level minimum (less verbose)
 
 ### API Credentials
 - **Never print API keys** in logs or console output. Use `logger.debug()` with only non-sensitive parts (e.g., endpoint, not token).
