@@ -302,6 +302,48 @@ class LocalModelInference:
 
         return json.dumps([final_output], indent=2)
 
+    def predict(
+        self, image_path, confidence_threshold=None, iou_threshold=None, class_map=None
+    ):
+        """Runs prediction and returns a Python dict (no JSON serialization)."""
+        conf_thresh = (
+            confidence_threshold
+            if confidence_threshold is not None
+            else self.confidence_threshold
+        )
+        iou_thresh = iou_threshold if iou_threshold is not None else self.iou_threshold
+
+        img = cv2.imread(image_path)
+        if img is None:
+            raise ValueError(f"Image not found: {image_path}")
+
+        h, w, _ = img.shape
+
+        if self.model_type == "YOLOv11":
+            formatted_predictions = self._predict_yolov11(
+                img, conf_thresh, class_map, iou_thresh
+            )
+        elif self.model_type == "RF-DETR-SEG":
+            formatted_predictions = self._predict_rfdetr_seg(
+                img, conf_thresh, class_map
+            )
+        elif self.model_type == "MaskRCNN":
+            formatted_predictions = self._predict_maskrcnn(
+                img, conf_thresh, iou_thresh, class_map
+            )
+        else:
+            raise ValueError(f"Unknown model type for prediction: {self.model_type}")
+
+        return [
+            {
+                "count_objects": len(formatted_predictions),
+                "predictions": {
+                    "image": {"width": w, "height": h},
+                    "predictions": formatted_predictions,
+                },
+            }
+        ]
+
     # -------------------------------------------------------------
     # DEDICATED PREDICTION METHODS
     # -------------------------------------------------------------

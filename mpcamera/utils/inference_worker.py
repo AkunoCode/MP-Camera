@@ -1,4 +1,3 @@
-import json
 import os
 import threading
 import tempfile
@@ -87,13 +86,12 @@ class InferenceWorker(QObject):
                         self._current_local_model_path = model_data
 
                     # Predict
-                    json_str = self._local_engine.predict_json(
+                    result = self._local_engine.predict(
                         path_to_infer,
                         confidence_threshold=conf,
                         iou_threshold=iou,
                         class_map=self.CLASS_MAP,
                     )
-                    result = json.loads(json_str)
 
                 elif RoboflowClient:
                     # Cloud
