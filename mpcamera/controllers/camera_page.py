@@ -2175,6 +2175,24 @@ class CameraPageController(QtCore.QObject):
         if ui["clear_btn"] is not None:
             ui["clear_btn"].setEnabled(not streaming and has_img)
 
+    def cleanup(self):
+        """Graceful shutdown — stop camera and wait for any active timers."""
+        try:
+            self._stop_camera()
+        except Exception:
+            pass
+        try:
+            self._frame_timer.stop()
+        except Exception:
+            pass
+        try:
+            self._stream_inference_timer.stop()
+        except Exception:
+            pass
+        # Daemon threads finish on their own since they are non-blocking IO or GPU work;
+        # the OS will reclaim resources. Log that shutdown is requested.
+        print("[CAMERA PAGE] cleanup complete")
+
 
 # ================= ENTRY POINT =================
 

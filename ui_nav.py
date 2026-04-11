@@ -288,6 +288,15 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception as e:
             print("Failed to start Directus fetch:", e)
 
+    def closeEvent(self, event):
+        """Ensure camera and threads are cleaned up on window close."""
+        try:
+            if hasattr(self, "_camera_controller") and self._camera_controller is not None:
+                self._camera_controller.cleanup()
+        except Exception as e:
+            print(f"Cleanup error on close: {e}")
+        super().closeEvent(event)
+
     def _highlight_frame_for_nav(self, nav_name: str):
         frame_name = self.frame_map.get(nav_name)
         if not frame_name:
