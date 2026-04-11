@@ -19,8 +19,10 @@ prediction_debug.txt
 
 # PyInstaller build artifacts (but keep build scripts)
 build/*
+!build/
 !build/build_*.sh
-!build/installer.nsi
+!build/build_*.ps1
+!build/installer.nsis
 dist/
 
 .superpowers/

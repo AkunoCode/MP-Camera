@@ -1,0 +1,48 @@
+; build/installer.nsis — NSIS installer script for SoilSight
+
+!define APP_NAME "SoilSight"
+!define APP_VERSION_FILE "..\VERSION"
+!define INSTALL_DIR "$PROGRAMFILES\SoilSight"
+!define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\SoilSight"
+
+; Read version from file
+!searchparse /file "${APP_VERSION_FILE}" `` APP_VERSION ``
+
+Name "${APP_NAME} ${APP_VERSION}"
+OutFile "..\dist\SoilSight-${APP_VERSION}-windows-setup.exe"
+InstallDir "${INSTALL_DIR}"
+InstallDirRegKey HKLM "${UNINSTALL_KEY}" "InstallLocation"
+RequestExecutionLevel admin
+
+; Pages
+Page directory
+Page instfiles
+
+; Uninstall pages
+UninstPage uninstConfirm
+UninstPage instfiles
+
+Section "Install"
+  SetOutPath "$INSTDIR"
+  File /r "..\dist\SoilSight\*.*"
+
+  ; Start Menu shortcut
+  CreateDirectory "$SMPROGRAMS\SoilSight"
+  CreateShortcut "$SMPROGRAMS\SoilSight\SoilSight.lnk" "$INSTDIR\SoilSight.exe"
+  CreateShortcut "$DESKTOP\SoilSight.lnk" "$INSTDIR\SoilSight.exe"
+
+  ; Write uninstall info
+  WriteRegStr HKLM "${UNINSTALL_KEY}" "DisplayName" "${APP_NAME}"
+  WriteRegStr HKLM "${UNINSTALL_KEY}" "UninstallString" "$INSTDIR\Uninstall.exe"
+  WriteRegStr HKLM "${UNINSTALL_KEY}" "InstallLocation" "$INSTDIR"
+  WriteRegStr HKLM "${UNINSTALL_KEY}" "DisplayVersion" "${APP_VERSION}"
+  WriteUninstaller "$INSTDIR\Uninstall.exe"
+SectionEnd
+
+Section "Uninstall"
+  RMDir /r "$INSTDIR"
+  Delete "$SMPROGRAMS\SoilSight\SoilSight.lnk"
+  RMDir "$SMPROGRAMS\SoilSight"
+  Delete "$DESKTOP\SoilSight.lnk"
+  DeleteRegKey HKLM "${UNINSTALL_KEY}"
+SectionEnd
