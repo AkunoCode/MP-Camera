@@ -279,7 +279,7 @@ QDoubleSpinBox:focus, QSpinBox:focus { border: 1px solid #0078d4; }
          <item row="0" column="1">
           <layout class="QHBoxLayout">
            <item><widget class="QLineEdit" name="roboflowApiKeyLine"><property name="echoMode"><enum>QLineEdit::Password</enum></property></widget></item>
-           <item><widget class="QPushButton" name="roboflowApiKeyToggle"><property name="text"><string>Show</string></property><property name="maximumWidth"><number>60</number></property><property name="styleSheet"><string notr="true">QPushButton { background: #eeeeee; color: #333; border: 1px solid #ccc; border-radius: 4px; font-weight: normal; } QPushButton:hover { background: #e0e0e0; }</string></property></widget></item>
+           <item><widget class="QPushButton" name="roboflowApiKeyToggle"><property name="text"><string>Show</string></property><property name="minimumWidth"><number>70</number></property><property name="maximumWidth"><number>70</number></property><property name="minimumHeight"><number>32</number></property><property name="styleSheet"><string notr="true">QPushButton { background-color: black; color: white; border-radius: 5px; font-weight: bold; font-size: 11pt; } QPushButton:hover { background-color: #333333; }</string></property></widget></item>
           </layout>
          </item>
          <item row="1" column="0"><widget class="QLabel" name="label_rf_url"><property name="text"><string>API URL</string></property></widget></item>
@@ -305,7 +305,7 @@ QDoubleSpinBox:focus, QSpinBox:focus { border: 1px solid #0078d4; }
          <item row="1" column="1">
           <layout class="QHBoxLayout">
            <item><widget class="QLineEdit" name="directusBearerLine"><property name="echoMode"><enum>QLineEdit::Password</enum></property></widget></item>
-           <item><widget class="QPushButton" name="directusBearerToggle"><property name="text"><string>Show</string></property><property name="maximumWidth"><number>60</number></property><property name="styleSheet"><string notr="true">QPushButton { background: #eeeeee; color: #333; border: 1px solid #ccc; border-radius: 4px; font-weight: normal; } QPushButton:hover { background: #e0e0e0; }</string></property></widget></item>
+           <item><widget class="QPushButton" name="directusBearerToggle"><property name="text"><string>Show</string></property><property name="minimumWidth"><number>70</number></property><property name="maximumWidth"><number>70</number></property><property name="minimumHeight"><number>32</number></property><property name="styleSheet"><string notr="true">QPushButton { background-color: black; color: white; border-radius: 5px; font-weight: bold; font-size: 11pt; } QPushButton:hover { background-color: #333333; }</string></property></widget></item>
           </layout>
          </item>
          <item row="2" column="0"><widget class="QLabel" name="label_directus_timeout"><property name="text"><string>Timeout (s)</string></property></widget></item>

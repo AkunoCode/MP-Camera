@@ -66,8 +66,11 @@ class SettingsPageController:
             missing.append("Directus Bearer Token")
 
         if missing:
-            msg = f"⚠️  Missing required API credentials:\n\n" + "\n".join(f"  • {item}" for item in missing) + \
-                  "\n\nPlease configure these in the Services tab before using inference features."
+            msg = (
+                f"⚠️  Missing required API credentials:\n\n"
+                + "\n".join(f"  • {item}" for item in missing)
+                + "\n\nPlease configure these in the Services tab before using inference features."
+            )
             try:
                 QtWidgets.QMessageBox.warning(self.page, "Missing API Credentials", msg)
             except Exception:
@@ -142,9 +145,15 @@ class SettingsPageController:
             pass
 
         try:
-            set_value("sensorWidthSpin", float(cfg.measurement.effective_sensor_width_mm))
-            set_value("sensorHeightSpin", float(cfg.measurement.effective_sensor_height_mm))
-            set_value("defaultMagnificationSpin", float(cfg.measurement.default_magnification))
+            set_value(
+                "sensorWidthSpin", float(cfg.measurement.effective_sensor_width_mm)
+            )
+            set_value(
+                "sensorHeightSpin", float(cfg.measurement.effective_sensor_height_mm)
+            )
+            set_value(
+                "defaultMagnificationSpin", float(cfg.measurement.default_magnification)
+            )
         except Exception:
             pass
 
@@ -155,8 +164,12 @@ class SettingsPageController:
             pass
 
         try:
-            set_value("brightnessDefaultSpin", int(cfg.brightness_contrast.brightness_default))
-            set_value("contrastDefaultSpin", int(cfg.brightness_contrast.contrast_default))
+            set_value(
+                "brightnessDefaultSpin", int(cfg.brightness_contrast.brightness_default)
+            )
+            set_value(
+                "contrastDefaultSpin", int(cfg.brightness_contrast.contrast_default)
+            )
         except Exception:
             pass
 
