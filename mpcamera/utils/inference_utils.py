@@ -1,5 +1,6 @@
 from typing import List, Dict, Any, Optional
 from math import isnan
+import numpy as np
 
 from mpcamera.utils.prediction_utils import extract_points_from_prediction
 from mpcamera.utils.camera_utils import color_for_label
@@ -119,6 +120,26 @@ def _looks_like_prediction_dict(d: Dict[str, Any]) -> bool:
     return False
 
 
+def _iou_matrix(boxes: np.ndarray) -> np.ndarray:
+    """Compute N×N IoU matrix for an (N, 4) array of [x1, y1, x2, y2] boxes."""
+    x1 = boxes[:, 0]
+    y1 = boxes[:, 1]
+    x2 = boxes[:, 2]
+    y2 = boxes[:, 3]
+
+    areas = (x2 - x1).clip(0) * (y2 - y1).clip(0)
+
+    inter_x1 = np.maximum(x1[:, None], x1[None, :])
+    inter_y1 = np.maximum(y1[:, None], y1[None, :])
+    inter_x2 = np.minimum(x2[:, None], x2[None, :])
+    inter_y2 = np.minimum(y2[:, None], y2[None, :])
+    inter_area = (inter_x2 - inter_x1).clip(0) * (inter_y2 - inter_y1).clip(0)
+
+    union = areas[:, None] + areas[None, :] - inter_area
+    iou = np.where(union > 0, inter_area / union, 0.0)
+    return iou
+
+
 def _filter_prediction_list(
     preds: List[Dict[str, Any]],
     confidence_threshold: Optional[float],
@@ -156,28 +177,29 @@ def _filter_prediction_list(
     if iou_t is None or len(boxed_meta) <= 1:
         return kept
 
-    # Greedy NMS on available boxes
+    # Sort by descending score
     order = sorted(
         range(len(boxed_meta)),
         key=lambda i: float(boxed_meta[i]["score"]),
         reverse=True,
     )
-    keep_boxed_positions: List[int] = []
 
-    while order:
-        cur = order.pop(0)
-        keep_boxed_positions.append(cur)
-        cur_box = boxed_meta[cur]["box"]
+    # Build box matrix for vectorized IoU
+    boxes_np = np.array([boxed_meta[i]["box"] for i in order], dtype=float)
+    iou_mat = _iou_matrix(boxes_np)
 
-        survivors = []
-        for j in order:
-            other_box = boxed_meta[j]["box"]
-            if _iou_xyxy(cur_box, other_box) <= iou_t:
-                survivors.append(j)
-        order = survivors
+    keep_order_positions = []
+    suppressed = set()
+    for idx in range(len(order)):
+        if idx in suppressed:
+            continue
+        keep_order_positions.append(idx)
+        for jdx in range(idx + 1, len(order)):
+            if iou_mat[idx, jdx] > iou_t:
+                suppressed.add(jdx)
 
     keep_local_indices = {
-        boxed_meta[pos]["local_idx"] for pos in keep_boxed_positions
+        boxed_meta[order[pos]]["local_idx"] for pos in keep_order_positions
     }
     # Always retain detections that had no valid box for NMS.
     for i, pred in enumerate(kept):
