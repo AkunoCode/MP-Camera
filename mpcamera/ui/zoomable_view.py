@@ -1,4 +1,7 @@
 from PyQt6 import QtWidgets, QtCore, QtGui
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class ZoomableGraphicsView(QtWidgets.QGraphicsView):
@@ -32,17 +35,17 @@ class ZoomableGraphicsView(QtWidgets.QGraphicsView):
                 QtWidgets.QGraphicsView.ViewportAnchor.AnchorViewCenter
             )
         except Exception:
-            pass
+            logger.debug("Could not set transformation anchor", exc_info=True)
         # default to no-pan; enable if user drags (can be toggled)
         try:
             self.setDragMode(QtWidgets.QGraphicsView.DragMode.NoDrag)
         except Exception:
-            pass
+            logger.debug("Could not set drag mode", exc_info=True)
         try:
             # ensure the view can receive keyboard focus so Space works to toggle pan
             self.setFocusPolicy(QtCore.Qt.FocusPolicy.StrongFocus)
         except Exception:
-            pass
+            logger.debug("Could not set focus policy", exc_info=True)
 
     def wheelEvent(self, event: QtGui.QWheelEvent):
         # Zoom in/out using wheel; respect limits
@@ -62,11 +65,11 @@ class ZoomableGraphicsView(QtWidgets.QGraphicsView):
                 self._zoom_level -= 1
             self.scale(factor, factor)
         except Exception:
-            # fallback to base implementation
+            logger.debug("wheelEvent error; falling back to base implementation", exc_info=True)
             try:
                 super().wheelEvent(event)
             except Exception:
-                pass
+                logger.debug("wheelEvent base fallback also failed")
 
     def zoom_in(self):
         try:
@@ -74,7 +77,7 @@ class ZoomableGraphicsView(QtWidgets.QGraphicsView):
                 self._zoom_level += 1
                 self.scale(self._zoom_step, self._zoom_step)
         except Exception:
-            pass
+            logger.debug("zoom_in failed", exc_info=True)
 
     def zoom_out(self):
         try:
@@ -82,7 +85,7 @@ class ZoomableGraphicsView(QtWidgets.QGraphicsView):
                 self._zoom_level -= 1
                 self.scale(1.0 / self._zoom_step, 1.0 / self._zoom_step)
         except Exception:
-            pass
+            logger.debug("zoom_out failed", exc_info=True)
 
     def reset_zoom(self):
         try:
@@ -93,7 +96,7 @@ class ZoomableGraphicsView(QtWidgets.QGraphicsView):
                 if rect.isValid():
                     self.fitInView(rect, QtCore.Qt.AspectRatioMode.KeepAspectRatio)
         except Exception:
-            pass
+            logger.debug("reset_zoom failed", exc_info=True)
 
     def set_pan_enabled(self, enabled: bool):
         try:
@@ -102,31 +105,28 @@ class ZoomableGraphicsView(QtWidgets.QGraphicsView):
             else:
                 self.setDragMode(QtWidgets.QGraphicsView.DragMode.NoDrag)
         except Exception:
-            pass
+            logger.debug("set_pan_enabled failed", exc_info=True)
 
     def mouseDoubleClickEvent(self, event: QtGui.QMouseEvent):
         # double-click resets zoom to fit
         try:
             self.reset_zoom()
         except Exception:
+            logger.debug("mouseDoubleClickEvent reset_zoom failed; falling back to base", exc_info=True)
             try:
                 super().mouseDoubleClickEvent(event)
             except Exception:
-                pass
+                logger.debug("mouseDoubleClickEvent base fallback also failed")
 
     def mousePressEvent(self, event: QtGui.QMouseEvent):
         try:
-            # ensure the view receives focus when clicked so key events are delivered
-            try:
-                self.setFocus()
-            except Exception:
-                pass
+            self.setFocus()
         except Exception:
-            pass
+            logger.debug("mousePressEvent setFocus failed")
         try:
             super().mousePressEvent(event)
         except Exception:
-            pass
+            logger.debug("mousePressEvent base call failed", exc_info=True)
 
     def keyPressEvent(self, event: QtGui.QKeyEvent):
         try:
@@ -137,17 +137,16 @@ class ZoomableGraphicsView(QtWidgets.QGraphicsView):
                     try:
                         vp.setCursor(QtCore.Qt.CursorShape.ClosedHandCursor)
                     except Exception:
-                        pass
+                        logger.debug("keyPressEvent: could not set closed hand cursor")
                 except Exception:
-                    pass
-                # consume the event
+                    logger.debug("keyPressEvent: could not set scroll hand drag mode", exc_info=True)
                 return
         except Exception:
-            pass
+            logger.debug("keyPressEvent: Space key handler failed", exc_info=True)
         try:
             super().keyPressEvent(event)
         except Exception:
-            pass
+            logger.debug("keyPressEvent base call failed", exc_info=True)
 
     def keyReleaseEvent(self, event: QtGui.QKeyEvent):
         try:
@@ -158,13 +157,13 @@ class ZoomableGraphicsView(QtWidgets.QGraphicsView):
                     try:
                         vp.setCursor(QtCore.Qt.CursorShape.ArrowCursor)
                     except Exception:
-                        pass
+                        logger.debug("keyReleaseEvent: could not restore arrow cursor")
                 except Exception:
-                    pass
+                    logger.debug("keyReleaseEvent: could not restore NoDrag mode", exc_info=True)
                 return
         except Exception:
-            pass
+            logger.debug("keyReleaseEvent: Space key handler failed", exc_info=True)
         try:
             super().keyReleaseEvent(event)
         except Exception:
-            pass
+            logger.debug("keyReleaseEvent base call failed", exc_info=True)
