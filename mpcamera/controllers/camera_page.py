@@ -1431,15 +1431,23 @@ class CameraPageController(QtCore.QObject):
 
     def _run_inference_on_pixmap(self, pixmap: QtGui.QPixmap, is_temp: bool):
         """Helper to save pixmap to temp file and run inference."""
+        tmp_path = None
         try:
             tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
             tmp.close()
-            pixmap.save(tmp.name, "JPG")
+            tmp_path = tmp.name
+            pixmap.save(tmp_path, "JPG")
             if is_temp:
-                print(f"[CAMERA PAGE] running temp inference on {tmp.name}")
-            self._run_inference(tmp.name, is_temp=is_temp)
+                print(f"[CAMERA PAGE] running temp inference on {tmp_path}")
+            self._run_inference(tmp_path, is_temp=is_temp)
         except Exception as e:
             print(f"Temp file creation failed: {e}")
+            # Clean up temp file if inference was never started
+            if tmp_path and os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
             if is_temp:
                 self._inference_running = False
 
